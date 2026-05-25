@@ -1,13 +1,6 @@
 """
 styles.py — Zenit Vision Design System
-Fuente única de verdad. Tokens mapeados 1:1 con el HTML zenit_v4.html.
-
-IMPORTANTE: Las fuentes son TUPLAS (family, size, weight?).
-CTkFont NO puede instanciarse antes de que exista la ventana raíz.
-Los helpers de widget crean CTkFont internamente, en el momento correcto.
-
-Uso:
-    from ui.styles import *
+Fuente única de verdad. Tokens mapeados 1:1 con el HTML zenit_v4.html (Optimizado Modo Mineral).
 """
 
 import customtkinter as ctk
@@ -17,162 +10,147 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COLORES  (equivalentes directos de las CSS variables --xxx)
+# COLORES (Modo Mineral Mate - Ajustado al Mockup Premium)
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Fondos (oscuro estilo "gym app")
-BG_COLOR     = "#0b1220"    # --bg        fondo base (no negro puro)
-BG1          = "#0f172a"    # --bg1       sidebar, topbar
-BG2          = "#111827"    # --bg2       tarjetas, inputs
-BG3          = "#1f2937"    # --bg3       hover de fondo
+# Fondos (Negros y carbón puros, sin tinte azul)
+BG_COLOR     = "#070809"    # Fondo base ultra oscuro (casi negro mate)
+BG1          = "#0D0E10"    # Sidebar y Topbar (un toque más claro para separar)
+BG2          = "#141619"    # Tarjetas, contenedores e inputs principales
+BG3          = "#1F2226"    # Hover de fondos y estados activos
 
 # Texto
-TEXT_WHITE   = "#e5e7eb"    # --tx        texto principal
-TEXT_GRAY    = "#9ca3af"    # --tx2       texto secundario
-TEXT_MUTED   = "#6b7280"    # --tx3       texto apagado / placeholders
+TEXT_WHITE   = "#FFFFFF"    # Texto principal brillante
+TEXT_GRAY    = "#9A9C9F"    # Texto secundario / descriptivo
+TEXT_MUTED   = "#56585B"    # Texto apagado / labels pequeños / placeholders
 
 # Bordes
-BORDER       = "#1f2937"    # --brd       líneas sutiles
-BORDER2      = "#243447"    # --brd2
+BORDER       = "#1F2226"    # Líneas de división sutiles muy oscuras
+BORDER2      = "#2B2E33"    # Bordes de inputs/botones secundarios enfocados
 
-# Acento verde
-ACCENT_GREEN = "#2d6a4a"    # --acc       verde oscuro (botones primarios)
-ACCENT_HOVER = "#245538"    # --acc2      verde hover
-ACCENT_TEXT  = "#4ade80"    # --acc-tx    verde brillante (texto acento)
-ACCENT_DIM   = "#0d3320"  # --acc-dim   verde translúcido
+# Acento verde (Modo Mineral Activo)
+ACCENT_GREEN = "#2BB371"    # Verde esmeralda deportivo plano para botones (Texto oscuro encima)
+ACCENT_HOVER = "#228F5A"    # Verde hover controlado
+ACCENT_TEXT  = "#2BB371"    # Texto verde brillante
+ACCENT_DIM   = "#10261C"    # Fondo verde translúcido/opaco (.bg-green-soft)
 
-# Error / peligro
-ERROR_COLOR  = "#f87171"    # --dng-tx
-ERROR_BG     = "#1a0d0d"    # --dng
-ERROR_BORDER = "#3a1a1a"    # --dng-brd
+# Error / peligro (.cfg-dl)
+ERROR_COLOR  = "#E05A5A"    
+ERROR_BG     = "#1C1212"    
+ERROR_BORDER = "#331C1C"    
 
-# Alias compatibilidad con código anterior
+# Alias de compatibilidad
 CARD_COLOR    = BG2
 PRIMARY_HOVER = ACCENT_HOVER
 
-# ── Colores de reto ────────────────────────────────────────────────────────────
-EASY_BG = "#0d1a10"; EASY_BRD = "#163022"; EASY_TX = "#4ade80"
-NORM_BG = "#141a0d"; NORM_BRD = "#243018"; NORM_TX = "#a3e635"
-HARD_BG = "#1a0d0d"; HARD_BRD = "#301616"; HARD_TX = "#f87171"
-FREE_BG = "#0d1020"; FREE_BRD = "#162040"; FREE_TX = "#60a5fa"
+# ── Colores de reto (Mapeados del mockup) ──────────────────────────────────────
+EASY_BG = "#102118"; EASY_BRD = "#163827"; EASY_TX = "#2BB371"
+NORM_BG = "#1A2110"; NORM_BRD = "#2C3B19"; NORM_TX = "#A3E635"
+HARD_BG = "#211010"; HARD_BRD = "#3D1919"; HARD_TX = "#E05A5A"
+FREE_BG = "#101626"; FREE_BRD = "#1A284C"; FREE_TX = "#4F93E6"
 
-# ── Colores de avatar (.a1 .a2 .a3 … del HTML) ───────────────────────────────
+# ── Colores de avatar (Login / Selector de usuario) ───────────────────────────
 AVATAR_PALETTE = [
-    {"bg": "#101018", "fg": "#a78bfa"},   # a1 – violeta
-    {"bg": "#101810", "fg": "#4ade80"},   # a2 – verde
-    {"bg": "#181010", "fg": "#fb923c"},   # a3 – naranja
-    {"bg": "#0d1a10", "fg": "#4ade80"},   # a4 – verde oscuro
-    {"bg": "#0d1020", "fg": "#60a5fa"},   # a5 – azul
-    {"bg": "#1a0d0d", "fg": "#f87171"},   # a6 – rojo
+    {"bg": "#14121F", "fg": "#906FFA"},   # violeta
+    {"bg": "#102118", "fg": "#2BB371"},   # verde
+    {"bg": "#211610", "fg": "#E67E22"},   # naranja
+    {"bg": "#101626", "fg": "#4F93E6"},   # azul
 ]
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FUENTES  — tuplas (family, size) o (family, size, weight)
-# Tkinter acepta tuplas directamente en el parámetro `font`.
-# CTkFont se instancia DENTRO de los helpers, nunca a nivel de módulo.
+# FUENTES (Mapeadas a estilos expandidos y limpios)
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Display / Logo — Syne 800
-FONT_LOGO     = ("Syne", 28, "bold")    # "ZENIT VISION"
-FONT_TITLE    = ("Syne", 22, "bold")    # títulos de sección
-FONT_SUBTITLE = ("Syne", 15, "bold")    # subtítulos de tarjeta
+# Si el sistema no tiene Syne o DM Sans por defecto, usamos fuentes del sistema seguras
+# que emulan perfectamente el look deportivo/robusto.
+FONT_LOGO     = ("Impact", 26)               #ZENIT VISION (Mayúsculas estiradas)
+FONT_TITLE    = ("Arial Black", 20)          # Títulos de sección ultra-bold expandidos
+FONT_SUBTITLE = ("Arial Black", 14)          # Subtítulos de tarjeta
 
-# Cuerpo — DM Sans
-FONT_SLOGAN   = ("DM Sans", 12)         # tagline bajo el logo
-FONT_LABEL    = ("DM Sans", 11, "bold") # etiquetas, botones
-FONT_REGULAR  = ("DM Sans", 11)         # texto general
-FONT_INPUT    = ("DM Sans", 11)         # campos de texto
-FONT_SMALL    = ("DM Sans",  9)         # metadata, badges
-FONT_TINY     = ("DM Sans",  8)         # uppercase labels, separadores
+# Cuerpo y controles
+FONT_SLOGAN   = ("Arial", 11)                
+FONT_LABEL    = ("Arial", 11, "bold")        
+FONT_REGULAR  = ("Arial", 11)                
+FONT_INPUT    = ("Arial", 11)                
+FONT_SMALL    = ("Arial", 9, "bold")         
+FONT_TINY     = ("Arial", 8, "bold")         
 
-# Alias
-FONT_BODY    = FONT_REGULAR
-FONT_CAPTION = FONT_SMALL
-
-# ══════════════════════════════════════════════════════════════════════════════
-# DIMENSIONES
-# ══════════════════════════════════════════════════════════════════════════════
-
-RADIUS_SM   = 6     # chips, badges
-RADIUS_MD   = 8     # botones, inputs
-RADIUS_LG   = 9     # tarjetas
-RADIUS_XL   = 11    # modales
-RADIUS_PILL = 20    # botones redondeados (.lg-reg)
-
-BTN_HEIGHT  = 36    # altura estándar de botón
-INPUT_H     = 33    # altura estándar de input
-TOPBAR_H    = 46    # altura topbar
-SIDEBAR_W   = 190   # ancho sidebar
+FONT_BODY     = FONT_REGULAR
+FONT_CAPTION  = FONT_SMALL
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HELPERS — widgets pre-estilizados
-# Se llaman DENTRO de los frames (ventana ya existe → CTkFont seguro aquí)
+# DIMENSIONES (Bordes un poco más limpios y marcados)
+# ══════════════════════════════════════════════════════════════════════════════
+RADIUS_SM   = 5
+RADIUS_MD   = 8
+RADIUS_LG   = 12
+RADIUS_XL   = 16
+RADIUS_PILL = 24
+
+BTN_HEIGHT  = 38
+INPUT_H     = 36
+TOPBAR_H    = 48
+SIDEBAR_W   = 200
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HELPERS MODIFICADOS (Alineados al contraste del mockup)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def primary_button(parent, text: str, command=None, **kw) -> ctk.CTkButton:
-    """Botón primario verde — .ab.p del HTML."""
+    """Botón primario verde mineral con texto oscuro de alto contraste."""
     return ctk.CTkButton(
         parent, text=text,
-        font=ctk.CTkFont(family="DM Sans", size=11, weight="bold"),
+        font=ctk.CTkFont(family=FONT_LABEL, size=FONT_LABEL, weight="bold"),
         fg_color=ACCENT_GREEN, hover_color=ACCENT_HOVER,
-        text_color="#071a0e",
+        text_color="#070809", # Texto casi negro para legibilidad sobre verde brillante
         corner_radius=RADIUS_MD, height=BTN_HEIGHT,
         command=command, **kw,
     )
-
 
 def secondary_button(parent, text: str, command=None, **kw) -> ctk.CTkButton:
-    """Botón secundario — .ab.s del HTML."""
     return ctk.CTkButton(
         parent, text=text,
-        font=ctk.CTkFont(family="DM Sans", size=11),
-        fg_color=BG2, hover_color=BG3,
+        font=ctk.CTkFont(family=FONT_REGULAR, size=FONT_REGULAR),
+        fg_color="transparent", # Botón plano transparente estilo mockup
+        hover_color=BG3,
         text_color=TEXT_GRAY,
-        border_width=1, border_color=BORDER2,
+        border_width=1, border_color=BORDER,
         corner_radius=RADIUS_MD, height=BTN_HEIGHT,
         command=command, **kw,
     )
 
-
 def danger_button(parent, text: str, command=None, **kw) -> ctk.CTkButton:
-    """Botón de peligro — .cfg-dl del HTML."""
     return ctk.CTkButton(
         parent, text=text,
-        font=ctk.CTkFont(family="DM Sans", size=11),
-        fg_color=ERROR_BG, hover_color="#2a1010",
+        font=ctk.CTkFont(family=FONT_REGULAR, size=FONT_REGULAR),
+        fg_color=ERROR_BG, hover_color="#2B1414",
         text_color=ERROR_COLOR,
         border_width=1, border_color=ERROR_BORDER,
         corner_radius=RADIUS_MD, height=BTN_HEIGHT,
         command=command, **kw,
     )
 
-
 def styled_entry(parent, placeholder: str = "", show: str = "", **kw) -> ctk.CTkEntry:
-    """Campo de texto — .cfg-in / .reg-in del HTML."""
     return ctk.CTkEntry(
         parent,
         placeholder_text=placeholder, show=show,
-        font=ctk.CTkFont(family="DM Sans", size=11),
-        fg_color=BG2, border_width=1, border_color=BORDER,
+        font=ctk.CTkFont(family=FONT_INPUT, size=FONT_INPUT),
+        fg_color=BG1, border_width=1, border_color=BORDER, # Fondo más oscuro que la tarjeta
         text_color=TEXT_WHITE, placeholder_text_color=TEXT_MUTED,
         corner_radius=RADIUS_MD, height=INPUT_H,
         **kw,
     )
 
-
 def section_label(parent, text: str, **kw) -> ctk.CTkLabel:
-    """Etiqueta uppercase — .cfg-lb del HTML."""
     return ctk.CTkLabel(
         parent, text=text.upper(),
-        font=ctk.CTkFont(family="DM Sans", size=8),
+        font=ctk.CTkFont(family=FONT_TINY, size=FONT_TINY, weight="bold"),
         text_color=TEXT_MUTED, **kw,
     )
 
-
 def card_frame(parent, **kw) -> ctk.CTkFrame:
-    """Tarjeta estándar — .sc / .ai del HTML."""
     return ctk.CTkFrame(
         parent,
-        fg_color=BG2, border_width=1, border_color=BORDER,
+        fg_color=CARD_COLOR, border_width=1, border_color=BORDER,
         corner_radius=RADIUS_LG, **kw,
     )
