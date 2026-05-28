@@ -1,17 +1,19 @@
-import customtkinter as ctk
+import sys
+from PyQt6.QtWidgets import QApplication
 from ui.main_window import MainWindow
 
 def main():
-    # Configuración global de la interfaz
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("blue")
-
-    # Iniciamos la ventana principal (MainWindow)
-    # Ella será la encargada de llamar a Firebase cuando sea necesario
-    app = MainWindow()
-    app.mainloop()
+    # Inicialización del motor de la aplicación Qt
+    app = QApplication(sys.argv)
+    
+    # Instanciamos la ventana maestra
+    window = MainWindow()
+    
+    # Iniciamos la aplicación mostrando el LoginView de PyQt6
+    window.show_login()
+    
+    window.show()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
-    app = MainWindow()
-    app.mainloop()
     main()

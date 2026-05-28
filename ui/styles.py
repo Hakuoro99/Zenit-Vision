@@ -1,156 +1,267 @@
 """
-styles.py — Zenit Vision Design System
-Fuente única de verdad. Tokens mapeados 1:1 con el HTML zenit_v4.html (Optimizado Modo Mineral).
+styles.py — Zenit-Visión Premium PyQt6 Design System
+Fuente única de verdad de estilos y tokens visuales mapeados a QSS (Qt Style Sheets).
+Concepto: Neodark Cyberpunk & Glassmorphic Matte.
 """
 
-import customtkinter as ctk
+# ── Colores base del tema (cyber-mineral) ──────────────────────────────────────
+BG_MAIN      = "#08090C"    # Fondo ultra oscuro de la ventana principal
+BG_SIDEBAR   = "#0F1115"    # Fondo del sidebar y paneles de control
+BG_CARD      = "#14171E"    # Fondo de las tarjetas
+BG_CARD_HOVER= "#1D212A"    # Estado activo / hover de tarjetas
+BG_INPUT     = "#090A0C"    # Fondo empotrado oscuro (alto contraste contra la tarjeta)
 
-# ── Modo oscuro global ─────────────────────────────────────────────────────────
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("green")
+# Colores de texto (Legibilidad WCAG AA Garantizada)
+TEXT_WHITE   = "#FFFFFF"    # Títulos y texto de alto contraste
+TEXT_GRAY    = "#C5C7CA"    # Cuerpo de texto / descriptivo
+TEXT_MUTED   = "#8A8E98"    # Elementos secundarios / placeholders / subtítulos
 
-# ══════════════════════════════════════════════════════════════════════════════
-# COLORES (Modo Mineral Mate - Ajustado al Mockup Premium)
-# ══════════════════════════════════════════════════════════════════════════════
+# Colores de bordes (Definidos y limpios)
+BORDER_DARK  = "#262A34"    # Bordes generales e inactivos
+BORDER_LIGHT = "#3E4456"    # Bordes de inputs / enfoque secundario
 
-# Fondos (Negros y carbón puros, sin tinte azul)
-BG_COLOR     = "#070809"    # Fondo base ultra oscuro (casi negro mate)
-BG1          = "#0D0E10"    # Sidebar y Topbar (un toque más claro para separar)
-BG2          = "#141619"    # Tarjetas, contenedores e inputs principales
-BG3          = "#1F2226"    # Hover de fondos y estados activos
+# Acento Verde Deportivo (Para Hovers y Estados Activos)
+ACCENT_GREEN = "#10B981"    # Verde esmeralda premium
+ACCENT_GREEN_BG = "#0D1F17" # Fondo verde oscuro translúcido
 
-# Texto
-TEXT_WHITE   = "#FFFFFF"    # Texto principal brillante
-TEXT_GRAY    = "#9A9C9F"    # Texto secundario / descriptivo
-TEXT_MUTED   = "#56585B"    # Texto apagado / labels pequeños / placeholders
+# Colores por dificultad refinados
+EASY_BG      = "#0D1F17"
+EASY_BRD     = "#143D2A"
+EASY_TX      = "#10B981"
 
-# Bordes
-BORDER       = "#1F2226"    # Líneas de división sutiles muy oscuras
-BORDER2      = "#2B2E33"    # Bordes de inputs/botones secundarios enfocados
+NORM_BG      = "#1F170A"
+NORM_BRD     = "#3D2B11"
+NORM_TX      = "#F59E0B"
 
-# Acento verde (Modo Mineral Activo)
-ACCENT_GREEN = "#2BB371"    # Verde esmeralda deportivo plano para botones (Texto oscuro encima)
-ACCENT_HOVER = "#228F5A"    # Verde hover controlado
-ACCENT_TEXT  = "#2BB371"    # Texto verde brillante
-ACCENT_DIM   = "#10261C"    # Fondo verde translúcido/opaco (.bg-green-soft)
+HARD_BG      = "#240E0E"
+HARD_BRD     = "#4F1B1B"
+HARD_TX      = "#EF4444"
 
-# Error / peligro (.cfg-dl)
-ERROR_COLOR  = "#E05A5A"    
-ERROR_BG     = "#1C1212"    
-ERROR_BORDER = "#331C1C"    
+FREE_BG      = "#0E1124"
+FREE_BRD     = "#1B204C"
+FREE_TX      = "#6366F1"
 
-# Alias de compatibilidad
-CARD_COLOR    = BG2
-PRIMARY_HOVER = ACCENT_HOVER
-
-# ── Colores de reto (Mapeados del mockup) ──────────────────────────────────────
-EASY_BG = "#102118"; EASY_BRD = "#163827"; EASY_TX = "#2BB371"
-NORM_BG = "#1A2110"; NORM_BRD = "#2C3B19"; NORM_TX = "#A3E635"
-HARD_BG = "#211010"; HARD_BRD = "#3D1919"; HARD_TX = "#E05A5A"
-FREE_BG = "#101626"; FREE_BRD = "#1A284C"; FREE_TX = "#4F93E6"
-
-# ── Colores de avatar (Login / Selector de usuario) ───────────────────────────
+# Colores de avatar (Login / Selector de usuario)
 AVATAR_PALETTE = [
-    {"bg": "#14121F", "fg": "#906FFA"},   # violeta
-    {"bg": "#102118", "fg": "#2BB371"},   # verde
-    {"bg": "#211610", "fg": "#E67E22"},   # naranja
-    {"bg": "#101626", "fg": "#4F93E6"},   # azul
+    {"bg": "#1D1635", "fg": "#8B5CF6"},   # Violeta
+    {"bg": "#0D1F17", "fg": "#10B981"},   # Verde
+    {"bg": "#1F130A", "fg": "#F59E0B"},   # Naranja
+    {"bg": "#0E1124", "fg": "#6366F1"},   # Azul
 ]
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FUENTES (Mapeadas a estilos expandidos y limpios)
-# ══════════════════════════════════════════════════════════════════════════════
+# ── Tipografías recomendadas ──────────────────────────────────────────────────
+FONT_TITLE    = "Arial"      # Arial estándar para evitar ensimados extremos
+FONT_BODY     = "Arial"
+FONT_MONO     = "Consolas"
 
-# Si el sistema no tiene Syne o DM Sans por defecto, usamos fuentes del sistema seguras
-# que emulan perfectamente el look deportivo/robusto.
-FONT_LOGO     = ("Impact", 26)               #ZENIT VISION (Mayúsculas estiradas)
-FONT_TITLE    = ("Arial Black", 20)          # Títulos de sección ultra-bold expandidos
-FONT_SUBTITLE = ("Arial Black", 14)          # Subtítulos de tarjeta
+# ── Hoja de Estilos Globales (QSS - Qt Style Sheets) ───────────────────────────
+GLOBAL_STYLESHEET = f"""
+/* ── Reset y Ventana Principal ── */
+QMainWindow {{
+    background-color: {BG_MAIN};
+    font-family: "{FONT_BODY}";
+}}
 
-# Cuerpo y controles
-FONT_SLOGAN   = ("Arial", 11)                
-FONT_LABEL    = ("Arial", 11, "bold")        
-FONT_REGULAR  = ("Arial", 11)                
-FONT_INPUT    = ("Arial", 11)                
-FONT_SMALL    = ("Arial", 9, "bold")         
-FONT_TINY     = ("Arial", 8, "bold")         
+QWidget#MainContent {{
+    background-color: {BG_MAIN};
+}}
 
-FONT_BODY     = FONT_REGULAR
-FONT_CAPTION  = FONT_SMALL
+/* ── Sidebar Navigation ── */
+QFrame#Sidebar {{
+    background-color: {BG_SIDEBAR};
+    border-right: 1px solid {BORDER_DARK};
+}}
 
-# ══════════════════════════════════════════════════════════════════════════════
-# DIMENSIONES (Bordes un poco más limpios y marcados)
-# ══════════════════════════════════════════════════════════════════════════════
-RADIUS_SM   = 5
-RADIUS_MD   = 8
-RADIUS_LG   = 12
-RADIUS_XL   = 16
-RADIUS_PILL = 24
+QFrame#SidebarLogo {{
+    background-color: transparent;
+}}
 
-BTN_HEIGHT  = 38
-INPUT_H     = 36
-TOPBAR_H    = 48
-SIDEBAR_W   = 200
+/* Botones de navegación del Sidebar */
+QPushButton.NavButton {{
+    background-color: transparent;
+    color: {TEXT_GRAY};
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: bold;
+    text-align: left;
+}}
 
-# ══════════════════════════════════════════════════════════════════════════════
-# HELPERS MODIFICADOS (Alineados al contraste del mockup)
-# ══════════════════════════════════════════════════════════════════════════════
+QPushButton.NavButton:hover {{
+    background-color: {BG_CARD};
+    color: {TEXT_WHITE};
+}}
 
-def primary_button(parent, text: str, command=None, **kw) -> ctk.CTkButton:
-    """Botón primario verde mineral con texto oscuro de alto contraste."""
-    return ctk.CTkButton(
-        parent, text=text,
-        font=ctk.CTkFont(family=FONT_LABEL, size=FONT_LABEL, weight="bold"),
-        fg_color=ACCENT_GREEN, hover_color=ACCENT_HOVER,
-        text_color="#070809", # Texto casi negro para legibilidad sobre verde brillante
-        corner_radius=RADIUS_MD, height=BTN_HEIGHT,
-        command=command, **kw,
-    )
+QPushButton.NavButton:checked {{
+    background-color: {ACCENT_GREEN_BG};
+    color: {ACCENT_GREEN};
+    border-left: 3px solid {ACCENT_GREEN};
+}}
 
-def secondary_button(parent, text: str, command=None, **kw) -> ctk.CTkButton:
-    return ctk.CTkButton(
-        parent, text=text,
-        font=ctk.CTkFont(family=FONT_REGULAR, size=FONT_REGULAR),
-        fg_color="transparent", # Botón plano transparente estilo mockup
-        hover_color=BG3,
-        text_color=TEXT_GRAY,
-        border_width=1, border_color=BORDER,
-        corner_radius=RADIUS_MD, height=BTN_HEIGHT,
-        command=command, **kw,
-    )
+/* Fila de Usuario Sidebar */
+QFrame#UserCard {{
+    background-color: {BG_CARD};
+    border: 1px solid {BORDER_DARK};
+    border-radius: 8px;
+}}
 
-def danger_button(parent, text: str, command=None, **kw) -> ctk.CTkButton:
-    return ctk.CTkButton(
-        parent, text=text,
-        font=ctk.CTkFont(family=FONT_REGULAR, size=FONT_REGULAR),
-        fg_color=ERROR_BG, hover_color="#2B1414",
-        text_color=ERROR_COLOR,
-        border_width=1, border_color=ERROR_BORDER,
-        corner_radius=RADIUS_MD, height=BTN_HEIGHT,
-        command=command, **kw,
-    )
+/* ── Formulario e Inputs (Altamente Visibles y Contrastados) ── */
+QLineEdit {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER_DARK};
+    border-radius: 8px;
+    color: {TEXT_WHITE};
+    font-size: 12px;
+    padding: 9px 12px;
+}}
 
-def styled_entry(parent, placeholder: str = "", show: str = "", **kw) -> ctk.CTkEntry:
-    return ctk.CTkEntry(
-        parent,
-        placeholder_text=placeholder, show=show,
-        font=ctk.CTkFont(family=FONT_INPUT, size=FONT_INPUT),
-        fg_color=BG1, border_width=1, border_color=BORDER, # Fondo más oscuro que la tarjeta
-        text_color=TEXT_WHITE, placeholder_text_color=TEXT_MUTED,
-        corner_radius=RADIUS_MD, height=INPUT_H,
-        **kw,
-    )
+QLineEdit:hover {{
+    border: 1px solid {BORDER_LIGHT};
+}}
 
-def section_label(parent, text: str, **kw) -> ctk.CTkLabel:
-    return ctk.CTkLabel(
-        parent, text=text.upper(),
-        font=ctk.CTkFont(family=FONT_TINY, size=FONT_TINY, weight="bold"),
-        text_color=TEXT_MUTED, **kw,
-    )
+QLineEdit:focus {{
+    border: 1px solid {ACCENT_GREEN};
+    background-color: {BG_MAIN};
+}}
 
-def card_frame(parent, **kw) -> ctk.CTkFrame:
-    return ctk.CTkFrame(
-        parent,
-        fg_color=CARD_COLOR, border_width=1, border_color=BORDER,
-        corner_radius=RADIUS_LG, **kw,
-    )
+QLineEdit:disabled {{
+    background-color: #0E0F12;
+    color: {TEXT_MUTED};
+    border: 1px solid {BORDER_DARK};
+}}
+
+/* ── Tarjetas Generales ── */
+QFrame.Card {{
+    background-color: {BG_CARD};
+    border: 1px solid {BORDER_DARK};
+    border-radius: 12px;
+}}
+
+QFrame.Card:hover {{
+    border: 1px solid {BORDER_LIGHT};
+    background-color: {BG_CARD_HOVER};
+}}
+
+/* ── Botón de Acción Principal (Premium Green Gradient) ── */
+QPushButton.PrimaryButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {ACCENT_GREEN}, stop:1 #059669);
+    color: {BG_MAIN};
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 10px 20px;
+}}
+
+QPushButton.PrimaryButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #34D399, stop:1 {ACCENT_GREEN});
+}}
+
+QPushButton.PrimaryButton:pressed {{
+    background-color: #047857;
+}}
+
+/* ── Botón de Acción Outline Secundario (Premium Green Hover) ── */
+QPushButton.SecondaryButton {{
+    background-color: {BG_CARD};
+    color: {TEXT_GRAY};
+    border: 1px solid {BORDER_DARK};
+    border-radius: 8px;
+    font-size: 12px;
+    padding: 8px 16px;
+    font-weight: bold;
+}}
+
+QPushButton.SecondaryButton:hover {{
+    background-color: {BG_CARD_HOVER};
+    color: {TEXT_WHITE};
+    border: 1px solid {ACCENT_GREEN};
+}}
+
+QPushButton.SecondaryButton:pressed {{
+    background-color: {BG_INPUT};
+}}
+
+/* ── Zona de Peligro / Botón Danger ── */
+QPushButton.DangerButton {{
+    background-color: {HARD_BG};
+    color: {HARD_TX};
+    border: 1px solid {HARD_BRD};
+    border-radius: 8px;
+    font-size: 12px;
+    padding: 8px 16px;
+    font-weight: bold;
+}}
+
+QPushButton.DangerButton:hover {{
+    background-color: #3B1414;
+    color: {TEXT_WHITE};
+    border: 1px solid {HARD_TX};
+}}
+
+QPushButton.DangerButton:pressed {{
+    background-color: #4F1B1B;
+}}
+
+/* ── Badges y Etiquetas Especiales ── */
+QLabel#BadgeFacil {{
+    background-color: {EASY_BG};
+    color: {EASY_TX};
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 3px 6px;
+}}
+
+QLabel#BadgeNormal {{
+    background-color: {NORM_BG};
+    color: {NORM_TX};
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 3px 6px;
+}}
+
+QLabel#BadgeDificil {{
+    background-color: {HARD_BG};
+    color: {HARD_TX};
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 3px 6px;
+}}
+
+QLabel#BadgeLibre {{
+    background-color: {FREE_BG};
+    color: {FREE_TX};
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 3px 6px;
+}}
+
+/* ── Barras de Scroll Personalizadas ── */
+QScrollBar:vertical {{
+    border: none;
+    background: transparent;
+    width: 6px;
+    margin: 0px;
+}}
+
+QScrollBar::handle:vertical {{
+    background-color: {BORDER_DARK};
+    border-radius: 3px;
+    min-height: 20px;
+}}
+
+QScrollBar::handle:vertical:hover {{
+    background-color: {BORDER_LIGHT};
+}}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    border: none;
+    background: transparent;
+    height: 0px;
+}}
+"""

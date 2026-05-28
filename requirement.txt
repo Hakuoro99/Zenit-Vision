@@ -3,3 +3,6 @@ opencv-python
 mediapipe
 pillow
 numpy
+bcrypt
+google-auth-oauthlib
+google-api-python-client
