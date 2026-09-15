@@ -381,8 +381,14 @@ class EjerciciosView(QWidget):
     def _iniciar(self, data):
         """Navega a la pantalla del ejercicio activo guardando el reto actual."""
         try:
-            self.shell.controller.ejercicio_actual = data
-            # Simula navegación o abre vista
+            if hasattr(self.shell, 'controller'):
+                self.shell.controller.ejercicio_actual = data
             print(f"[Zenit-Vision QTs] Iniciando reto: {data['nombre']} (Dificultad: {data['badge']})")
+            
+            # Navegar a la vista de entrenamiento activo
+            if hasattr(self.shell, 'navigate_to_exercise'):
+                self.shell.navigate_to_exercise(data)
+            elif hasattr(self.shell, 'navigate'):
+                self.shell.navigate("active_exercise", data)
         except Exception as e:
             print(f"Error al iniciar reto: {e}")

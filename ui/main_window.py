@@ -269,7 +269,7 @@ class AppShell(QWidget):
         self.content_stack.setObjectName("MainContent")
         main_layout.addWidget(self.content_stack)
 
-    def navigate(self, key):
+    def navigate(self, key, data=None):
         self._active_key = key
 
         # Actualizar estado Checked de los botones
@@ -278,6 +278,21 @@ class AppShell(QWidget):
 
         # Cargar de forma perezosa (lazy) la vista correspondiente
         widget = self._get_or_create(key)
+        if key == "active_exercise" and data is not None:
+            widget.start_session(data)
+        elif hasattr(widget, 'refresh_data'):
+            widget.refresh_data()
+
+        self.content_stack.setCurrentWidget(widget)
+
+    def navigate_to_exercise(self, challenge_data):
+        """Navega a la pantalla de entrenamiento en vivo e inicia la captura con el reto indicado."""
+        self._active_key = "active_exercise"
+        for btn in self.nav_buttons.values():
+            btn.setChecked(False)
+
+        widget = self._get_or_create("active_exercise")
+        widget.start_session(challenge_data)
         self.content_stack.setCurrentWidget(widget)
 
     def _get_or_create(self, key):
@@ -296,6 +311,9 @@ class AppShell(QWidget):
             elif key == "configuracion":
                 from ui.views.configuracion_view import ConfiguracionView
                 widget = ConfiguracionView(self)
+            elif key == "active_exercise":
+                from ui.views.active_exercise_view import ActiveExerciseView
+                widget = ActiveExerciseView(self)
             
             if widget:
                 self._content_widgets[key] = widget

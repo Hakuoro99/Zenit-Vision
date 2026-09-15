@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton, QScrollArea
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from datetime import datetime
 
 from ui.styles import (
@@ -12,7 +12,6 @@ from ui.styles import (
     FREE_BG, FREE_BRD, FREE_TX,
     ACCENT_GREEN
 )
-from PyQt6.QtCore import Qt, QSize
 from ui.icons import get_icon, get_icon_pixmap
 
 def get_current_date_spanish():
@@ -25,13 +24,20 @@ def get_current_date_spanish():
     return f"{now.day} {months[now.month]} {now.year}"
 
 class DashboardView(QWidget):
+    """
+    Panel de Control principal con métricas del usuario e historial de actividades recientes.
+    """
     def __init__(self, shell_parent):
         super().__init__()
         self.shell = shell_parent
         self._init_ui()
 
+    def showEvent(self, event):
+        """Se activa automáticamente cada vez que la vista se hace visible."""
+        super().showEvent(event)
+        self.refresh_data()
+
     def _init_ui(self):
-        # Layout vertical principal
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(28, 24, 28, 20)
         main_layout.setSpacing(16)
@@ -41,7 +47,6 @@ class DashboardView(QWidget):
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Título
         title_container = QFrame()
         title_layout = QVBoxLayout(title_container)
         title_layout.setContentsMargins(0, 0, 0, 0)
@@ -49,14 +54,13 @@ class DashboardView(QWidget):
 
         title_lbl = QLabel("Panel de Control")
         title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 22px; color: {TEXT_WHITE}; font-weight: bold;")
-        sub_lbl = QLabel("Actividades de la semana")
+        sub_lbl = QLabel("Actividades y resumen de rendimiento")
         sub_lbl.setStyleSheet(f"font-size: 12px; color: {TEXT_GRAY};")
 
         title_layout.addWidget(title_lbl)
         title_layout.addWidget(sub_lbl)
         header_layout.addWidget(title_container)
 
-        # Fecha derecha
         date_card = QFrame()
         date_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 5px;")
         date_layout = QHBoxLayout(date_card)
@@ -76,9 +80,9 @@ class DashboardView(QWidget):
         
         scroll_content = QWidget()
         scroll_content.setStyleSheet("background: transparent;")
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
-        scroll_layout.setSpacing(16)
+        self.scroll_layout = QVBoxLayout(scroll_content)
+        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
+        self.scroll_layout.setSpacing(16)
 
         # ── 2.1 Tarjetas de Estadísticas (Stats Grid) ──────────────────────────
         stats_frame = QFrame()
@@ -86,30 +90,14 @@ class DashboardView(QWidget):
         stats_layout.setContentsMargins(0, 0, 0, 0)
         stats_layout.setSpacing(12)
 
-        puntos = 0
-        nivel = 1
-        racha = 0
+        self.puntos_card, self.puntos_val_lbl, self.puntos_tag_lbl = self._create_stat_card_widget("star", "TOTAL DE PUNTOS", "0 pts", "Nivel 1", EASY_BG, EASY_TX)
+        self.nivel_card, self.nivel_val_lbl, self.nivel_tag_lbl = self._create_stat_card_widget("level", "NIVEL ACTUAL", "1", "Explorador", FREE_BG, FREE_TX)
+        self.racha_card, self.racha_val_lbl, self.racha_tag_lbl = self._create_stat_card_widget("streak", "MEJOR RACHA", "1 días", "Activa", NORM_BG, NORM_TX)
 
-        # Consultar datos reales de Firebase
-        uid = self.shell.controller.current_user_id
-        if uid == "invitado":
-            puntos = 0
-            nivel = 1
-            racha = 0
-        elif uid and uid != "demo_tesis":
-            try:
-                data = self.shell.controller.fb_db.read_record(f"users/{uid}")
-                if data:
-                    puntos = data.get("puntos", 0)
-                    nivel = data.get("nivel", 1)
-                    racha = data.get("racha", 0)
-            except Exception:
-                pass
-
-        stats_layout.addWidget(self._build_stat_card("star", "TOTAL DE PUNTOS", f"{puntos:,} pts", "+45 hoy", EASY_BG, EASY_TX))
-        stats_layout.addWidget(self._build_stat_card("level", "NIVEL ACTUAL", f"{nivel}", "Explorador", FREE_BG, FREE_TX))
-        stats_layout.addWidget(self._build_stat_card("streak", "MEJOR RACHA", f"{racha} días", "Activa", NORM_BG, NORM_TX))
-        scroll_layout.addWidget(stats_frame)
+        stats_layout.addWidget(self.puntos_card)
+        stats_layout.addWidget(self.nivel_card)
+        stats_layout.addWidget(self.racha_card)
+        self.scroll_layout.addWidget(stats_frame)
 
         # ── 2.2 Botones de Acción Rápida ──────────────────────────────────────
         actions_frame = QFrame()
@@ -117,7 +105,6 @@ class DashboardView(QWidget):
         actions_layout.setContentsMargins(0, 4, 0, 4)
         actions_layout.setSpacing(12)
 
-        # Botón Ejercicio
         btn_ej = QPushButton(" Iniciar ejercicio\n Nueva sesión de entrenamiento")
         btn_ej.setFixedHeight(60)
         btn_ej.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -141,7 +128,6 @@ class DashboardView(QWidget):
         """)
         btn_ej.clicked.connect(lambda: self.shell.navigate("ejercicios"))
 
-        # Botón Estadísticas
         btn_est = QPushButton(" Ver estadísticas\n Revisa tu progreso semanal")
         btn_est.setFixedHeight(60)
         btn_est.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -168,28 +154,29 @@ class DashboardView(QWidget):
 
         actions_layout.addWidget(btn_ej)
         actions_layout.addWidget(btn_est)
-        scroll_layout.addWidget(actions_frame)
+        self.scroll_layout.addWidget(actions_frame)
 
         # ── 2.3 Listado de Actividades Recientes ──────────────────────────────
-        act_title = QLabel("Actividades de esta semana")
+        act_title = QLabel("Actividades de la sesión")
         act_title.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14px; color: {TEXT_WHITE}; font-weight: bold; margin-top: 10px;")
-        scroll_layout.addWidget(act_title)
+        self.scroll_layout.addWidget(act_title)
 
-        activities_list = [
-            ("Sentadillas · Reto Fácil", "Hoy — 08:30 am", "+45 pts", "15 reps · 10 min", "squat", EASY_BG, EASY_TX, EASY_BRD),
-            ("Lagartijas · Reto Normal", "Ayer — 07:15 am", "+80 pts", "30 reps · 20 min", "pushup", FREE_BG, FREE_TX, FREE_BRD),
-            ("Jumping Jacks · Reto Normal", "Ayer — 07:50 am", "+80 pts", "40 reps · 20 min", "jumping_jacks", NORM_BG, NORM_TX, NORM_BRD),
-            ("Reto Avanzado completo", "Domingo — 06:00 am", "+200 pts", "180 reps · 35 min", "streak", HARD_BG, HARD_TX, HARD_BRD),
-        ]
+        # Contenedor dinámico de lista de actividades
+        self.activities_container = QFrame()
+        self.activities_container.setStyleSheet("background: transparent; border: none;")
+        self.activities_layout = QVBoxLayout(self.activities_container)
+        self.activities_layout.setContentsMargins(0, 0, 0, 0)
+        self.activities_layout.setSpacing(8)
 
-        for nombre, hora, pts, desc, icon, bg, tx, brd in activities_list:
-            item_frame = self._build_activity_item(nombre, hora, pts, desc, icon, bg, tx, brd)
-            scroll_layout.addWidget(item_frame)
+        self.scroll_layout.addWidget(self.activities_container)
 
         scroll.setWidget(scroll_content)
         main_layout.addWidget(scroll)
 
-    def _build_stat_card(self, icon_name, label, value, badge, bg_color, tx_color):
+        # Cargar datos por primera vez
+        self.refresh_data()
+
+    def _create_stat_card_widget(self, icon_name, label, value, badge, bg_color, tx_color):
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
@@ -205,7 +192,6 @@ class DashboardView(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(6)
 
-        # Fila de Cabecera con Icono Vectorial
         title_layout = QHBoxLayout()
         title_layout.setContentsMargins(0, 0, 0, 0)
         title_layout.setSpacing(6)
@@ -242,7 +228,82 @@ class DashboardView(QWidget):
         layout.addWidget(val)
         layout.addWidget(tag, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        return card
+        return card, val, tag
+
+    def refresh_data(self):
+        """Lee datos desde FirebaseDB o controller.guest_data y actualiza la UI."""
+        controller = getattr(self.shell, 'controller', None)
+        if not controller:
+            return
+
+        uid = getattr(controller, 'current_user_id', None)
+        puntos = 0
+        nivel = 1
+        racha = 1
+        historial = []
+
+        if uid == "invitado" or not uid:
+            guest_data = getattr(controller, 'guest_data', {})
+            puntos = guest_data.get("puntos", 0)
+            nivel = guest_data.get("nivel", 1)
+            racha = guest_data.get("racha", 1)
+            historial = guest_data.get("historial", [])
+        else:
+            try:
+                fb_db = getattr(controller, 'fb_db', None)
+                if fb_db:
+                    user_data = fb_db.read_record(f"users/{uid}") or {}
+                    puntos = user_data.get("puntos", 0)
+                    nivel = user_data.get("nivel", 1)
+                    racha = user_data.get("racha", 1)
+
+                    hist_raw = user_data.get("historial", {})
+                    if isinstance(hist_raw, dict):
+                        # Ordenar por timestamp descendente
+                        historial = [v for k, v in sorted(hist_raw.items(), reverse=True)]
+                    elif isinstance(hist_raw, list):
+                        historial = hist_raw
+            except Exception as e:
+                print(f"[DashboardView] Error leyendo datos de Firebase: {e}")
+
+        # Actualizar Tarjetas
+        self.puntos_val_lbl.setText(f"{puntos:,} pts")
+        self.nivel_val_lbl.setText(str(nivel))
+        self.racha_val_lbl.setText(f"{racha} días")
+
+        # Limpiar lista anterior de actividades
+        while self.activities_layout.count():
+            item = self.activities_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not historial:
+            empty_lbl = QLabel("Aún no has registrado sesiones de entrenamiento.\n¡Haz clic en 'Iniciar ejercicio' para comenzar!")
+            empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px; padding: 20px; background-color: {BG_CARD}; border-radius: 8px;")
+            self.activities_layout.addWidget(empty_lbl)
+        else:
+            for item_data in historial[:6]:  # Mostrar los 6 más recientes
+                nombre = item_data.get("reto_nombre", "Entrenamiento Libre")
+                fecha = item_data.get("fecha", "Reciente")
+                pts = f"+{item_data.get('puntos', 0)} pts"
+                reps = item_data.get("repeticiones_totales", 0)
+                dur = item_data.get("duracion_minutos", 0)
+                desc = f"{reps} reps · {dur} min"
+                
+                ex_type = item_data.get("reto_id", "squat")
+                icon_name = "squat"
+                bg, tx, brd = EASY_BG, EASY_TX, EASY_BRD
+                
+                if "avanzado" in ex_type or "dificil" in str(item_data.get("dificultad")).lower():
+                    bg, tx, brd = HARD_BG, HARD_TX, HARD_BRD
+                elif "estandar" in ex_type or "normal" in str(item_data.get("dificultad")).lower():
+                    bg, tx, brd = NORM_BG, NORM_TX, NORM_BRD
+                elif "libre" in ex_type:
+                    bg, tx, brd = FREE_BG, FREE_TX, FREE_BRD
+
+                item_frame = self._build_activity_item(nombre, fecha, pts, desc, icon_name, bg, tx, brd)
+                self.activities_layout.addWidget(item_frame)
 
     def _build_activity_item(self, nombre, hora, pts, desc, icon_name, bg, tx, brd):
         item = QFrame()
@@ -261,7 +322,6 @@ class DashboardView(QWidget):
         layout = QHBoxLayout(item)
         layout.setContentsMargins(14, 0, 14, 0)
 
-        # Icono de Actividad Vectorial
         icon_pixmap = get_icon_pixmap(icon_name, tx, size=16)
         icon_lbl = QLabel()
         icon_lbl.setPixmap(icon_pixmap)
@@ -270,7 +330,6 @@ class DashboardView(QWidget):
         icon_lbl.setStyleSheet(f"background-color: {bg}; border-radius: 6px; border: none;")
         layout.addWidget(icon_lbl)
 
-        # Info del Ejercicio (Izquierda)
         info_frame = QFrame()
         info_frame.setStyleSheet("background: transparent; border: none;")
         info_layout = QVBoxLayout(info_frame)
@@ -286,7 +345,6 @@ class DashboardView(QWidget):
         info_layout.addWidget(time_lbl)
         layout.addWidget(info_frame)
 
-        # Detalles del Ejercicio (Derecha)
         detail_frame = QFrame()
         detail_frame.setStyleSheet("background: transparent; border: none;")
         detail_layout = QVBoxLayout(detail_frame)
@@ -294,11 +352,11 @@ class DashboardView(QWidget):
         detail_layout.setSpacing(2)
 
         pts_lbl = QLabel(pts)
-        pts_lbl.setStyleSheet(f"color: {tx}; font-size: 12px; font-weight: bold; text-align: right;")
+        pts_lbl.setStyleSheet(f"color: {tx}; font-size: 12px; font-weight: bold;")
         pts_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         
         desc_lbl = QLabel(desc)
-        desc_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px; text-align: right;")
+        desc_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px;")
         desc_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         detail_layout.addWidget(pts_lbl)
