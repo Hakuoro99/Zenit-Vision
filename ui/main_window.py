@@ -177,16 +177,12 @@ class AppShell(QWidget):
         title_row_layout.addWidget(brand_title)
         title_row_layout.addWidget(brand_title_accent)
 
-        brand_subtitle = QLabel("MODO EXPLORADOR")
-        brand_subtitle.setStyleSheet("font-size: 7px; color: #626A7A; font-weight: bold; border: none; background: transparent;")
-
         text_container = QFrame()
         text_container.setStyleSheet("background: transparent; border: none;")
         text_container_layout = QVBoxLayout(text_container)
         text_container_layout.setContentsMargins(0, 0, 0, 0)
         text_container_layout.setSpacing(0)
         text_container_layout.addWidget(title_row)
-        text_container_layout.addWidget(brand_subtitle)
 
         logo_container = QFrame()
         logo_container.setStyleSheet("background: transparent; border: none;")
@@ -321,22 +317,31 @@ class AppShell(QWidget):
         return self._content_widgets[key]
 
     def refresh_user(self):
-        """Actualiza la tarjeta de usuario en el sidebar."""
+        """Actualiza la tarjeta de usuario en el sidebar con Gamificación."""
+        from core.gamification import GamificationEngine
         uid = self.controller.current_user_id
+
         if uid == "invitado":
+            gd = getattr(self.controller, 'guest_data', {})
+            puntos = gd.get("puntos", 0)
+            lvl_info = GamificationEngine.get_level_data(puntos)
             self.username_label.setText("Invitado")
-            self.user_level_label.setText("Entrenamiento Libre")
+            self.user_level_label.setText(f"Nivel {lvl_info['level']} · {lvl_info['title']}")
+            self.user_level_label.setStyleSheet(f"color: {lvl_info['color']}; font-size: 9px; font-weight: bold;")
             return
+
         if uid:
             try:
                 data = self.controller.fb_db.read_record(f"users/{uid}")
                 if data:
                     nombre = data.get("nombre", "Usuario")
-                    nivel = data.get("nivel", 1)
+                    puntos = data.get("puntos", 0)
+                    lvl_info = GamificationEngine.get_level_data(puntos)
                     self.username_label.setText(nombre[:15])
-                    self.user_level_label.setText(f"Nivel {nivel} · Explorador")
-            except Exception:
-                pass
+                    self.user_level_label.setText(f"Nivel {lvl_info['level']} · {lvl_info['title']}")
+                    self.user_level_label.setStyleSheet(f"color: {lvl_info['color']}; font-size: 9px; font-weight: bold;")
+            except Exception as e:
+                print(f"[AppShell] Error actualizando perfil de usuario: {e}")
 
     def _logout(self):
         uid = self.controller.current_user_id
@@ -415,6 +420,38 @@ class MainWindow(QMainWindow):
 
     def login_success(self, user_id):
         self.current_user_id = user_id
+        
+        # Procesar Bono de Racha Diaria
+        try:
+            from core.gamification import GamificationEngine
+            if user_id == "invitado":
+                if not hasattr(self, 'guest_data') or not isinstance(self.guest_data, dict):
+                    self.guest_data = {}
+                last_date = self.guest_data.get("last_workout_date", "")
+                racha_curr = self.guest_data.get("racha", 1)
+                res = GamificationEngine.check_daily_streak_bonus(last_date, racha_curr)
+                if res["updated"]:
+                    self.guest_data["racha"] = res["streak"]
+                    self.guest_data["puntos"] = self.guest_data.get("puntos", 0) + res["bonus_pts"]
+                    self.guest_data["last_workout_date"] = res["date"]
+                    self.guest_data["daily_bonus_claimed"] = res["bonus_pts"]
+            elif self.fb_db:
+                user_node = f"users/{user_id}"
+                user_data = self.fb_db.read_record(user_node) or {}
+                last_date = user_data.get("last_workout_date", "")
+                racha_curr = user_data.get("racha", 1)
+                res = GamificationEngine.check_daily_streak_bonus(last_date, racha_curr)
+                if res["updated"]:
+                    nuevos_pts = user_data.get("puntos", 0) + res["bonus_pts"]
+                    self.fb_db.update_record("", {
+                        f"{user_node}/racha": res["streak"],
+                        f"{user_node}/puntos": nuevos_pts,
+                        f"{user_node}/last_workout_date": res["date"],
+                        f"{user_node}/daily_bonus_claimed": res["bonus_pts"]
+                    })
+        except Exception as e:
+            print(f"[MainWindow] Error al procesar bono de racha diaria: {e}")
+
         self.shell.refresh_user()
         self.central_stack.setCurrentWidget(self.shell)
         self.shell.navigate("dashboard")

@@ -5,14 +5,15 @@ from PyQt6.QtCore import Qt
 from datetime import datetime
 
 from ui.styles import (
-    TEXT_WHITE, TEXT_GRAY, TEXT_MUTED, BORDER_DARK, BG_CARD, FONT_TITLE,
-    EASY_BG, EASY_TX, NORM_BG, NORM_TX, HARD_BG, HARD_TX, FREE_BG, FREE_TX
+    TEXT_WHITE, TEXT_GRAY, TEXT_MUTED, BORDER_DARK, BG_CARD, BG_CARD_HOVER, BORDER_LIGHT, FONT_TITLE,
+    EASY_BG, EASY_TX, NORM_BG, NORM_TX, HARD_BG, HARD_TX, FREE_BG, FREE_TX, ACCENT_GREEN
 )
 from ui.icons import get_icon_pixmap
 
 class EstadisticasView(QWidget):
     """
-    Vista de Estadísticas completas con métricas acumuladas de FirebaseDB / Sesión Activa.
+    Vista de Estadísticas completas con métricas de rendimiento y gráfico de actividad semanal
+    conectado en tiempo real al perfil del usuario.
     """
     def __init__(self, shell_parent):
         super().__init__()
@@ -41,7 +42,7 @@ class EstadisticasView(QWidget):
 
         title_lbl = QLabel("Estadísticas de Rendimiento")
         title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 22px; color: {TEXT_WHITE}; font-weight: bold;")
-        sub_lbl = QLabel("Monitorea tu crecimiento diario y tus logros físicos")
+        sub_lbl = QLabel("Monitorea tu crecimiento diario y tus métricas físicas acumuladas")
         sub_lbl.setStyleSheet(f"font-size: 12px; color: {TEXT_GRAY};")
 
         title_layout.addWidget(title_lbl)
@@ -77,35 +78,59 @@ class EstadisticasView(QWidget):
         summary_layout.addWidget(self.card_reps)
         self.scroll_layout.addWidget(summary_grid)
 
-        # ── 2.2 Gráfico de Actividad Semanal ──────────────────────────────────
+        # ── 2.2 Gráfico de Actividad Semanal Mejorado ────────────────────────
         self.chart_card = QFrame()
-        self.chart_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 12px;")
+        self.chart_card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_CARD};
+                border: 1px solid {BORDER_DARK};
+                border-radius: 14px;
+            }}
+        """)
         self.chart_card_layout = QVBoxLayout(self.chart_card)
-        self.chart_card_layout.setContentsMargins(20, 18, 20, 18)
-        self.chart_card_layout.setSpacing(12)
+        self.chart_card_layout.setContentsMargins(22, 20, 22, 20)
+        self.chart_card_layout.setSpacing(14)
 
         chart_header = QHBoxLayout()
-        chart_title = QLabel("Actividad Semanal")
-        chart_title.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 13px; color: {TEXT_WHITE}; font-weight: bold; border: none;")
-        chart_range = QLabel("últimos 7 días")
-        chart_range.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; border: none;")
         
-        chart_header.addWidget(chart_title)
-        chart_header.addWidget(chart_range, alignment=Qt.AlignmentFlag.AlignRight)
+        header_text_container = QVBoxLayout()
+        header_text_container.setSpacing(2)
+        chart_title = QLabel("Rendimiento Semanal (Repeticiones Diarias)")
+        chart_title.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14px; color: {TEXT_WHITE}; font-weight: bold; border: none;")
+        self.chart_subtitle = QLabel("Actividad acumulada en los últimos 7 días")
+        self.chart_subtitle.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; border: none;")
+        header_text_container.addWidget(chart_title)
+        header_text_container.addWidget(self.chart_subtitle)
+
+        self.weekly_total_lbl = QLabel("0 reps esta semana")
+        self.weekly_total_lbl.setStyleSheet(f"""
+            background-color: {BG_CARD_HOVER};
+            color: {ACCENT_GREEN};
+            border: 1px solid {ACCENT_GREEN};
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 4px 10px;
+        """)
+
+        chart_header.addLayout(header_text_container)
+        chart_header.addStretch()
+        chart_header.addWidget(self.weekly_total_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
         self.chart_card_layout.addLayout(chart_header)
 
-        # Contenedor de las barras
+        # Contenedor visual de las barras de rendimiento
         self.bar_container = QFrame()
+        self.bar_container.setFixedHeight(150)
         self.bar_container.setStyleSheet("border: none; background: transparent;")
         self.bar_layout = QHBoxLayout(self.bar_container)
-        self.bar_layout.setContentsMargins(0, 10, 0, 10)
-        self.bar_layout.setSpacing(10)
+        self.bar_layout.setContentsMargins(10, 10, 10, 10)
+        self.bar_layout.setSpacing(14)
         
         self.chart_card_layout.addWidget(self.bar_container)
         self.scroll_layout.addWidget(self.chart_card)
 
         # ── 2.3 Historial Completo de Entrenamientos ──────────────────────────
-        hist_title = QLabel("Historial de Entrenamientos")
+        hist_title = QLabel("Historial Completo de Entrenamientos")
         hist_title.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14px; color: {TEXT_WHITE}; font-weight: bold; margin-top: 10px;")
         self.scroll_layout.addWidget(hist_title)
 
@@ -165,16 +190,16 @@ class EstadisticasView(QWidget):
         return card, val_lbl
 
     def refresh_data(self):
-        """Carga métricas reales desde FirebaseDB o controller.guest_data."""
+        """Lee datos desde FirebaseDB o controller.guest_data y actualiza la UI."""
         controller = getattr(self.shell, 'controller', None)
         if not controller:
             return
 
         uid = getattr(controller, 'current_user_id', None)
-        total_sesiones = 0
         total_puntos = 0
-        total_tiempo = 0.0
         total_reps = 0
+        total_tiempo = 0.0
+        total_sesiones = 0
         historial = []
 
         if uid == "invitado" or not uid:
@@ -208,7 +233,7 @@ class EstadisticasView(QWidget):
         self.tiempo_lbl.setText(f"{total_tiempo:.1f}")
         self.reps_lbl.setText(f"{total_reps:,}")
 
-        # Renderizar gráfico de actividad semanal dinámico
+        # Renderizar gráfico de actividad semanal
         self._update_weekly_chart(historial)
 
         # Renderizar historial completo
@@ -238,90 +263,90 @@ class EstadisticasView(QWidget):
 
                 left_info = QVBoxLayout()
                 left_info.setSpacing(2)
-                name_lbl = QLabel(nombre)
-                name_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 11px; font-weight: bold; border: none;")
-                sub_lbl = QLabel(f"{reps} reps · {dur} min")
-                sub_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px; border: none;")
-                left_info.addWidget(name_lbl)
-                left_info.addWidget(sub_lbl)
+                title_lbl = QLabel(nombre)
+                title_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 11.5px; font-weight: bold;")
+                date_lbl = QLabel(fecha)
+                date_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px;")
+                left_info.addWidget(title_lbl)
+                left_info.addWidget(date_lbl)
 
+                right_info = QVBoxLayout()
+                right_info.setSpacing(2)
                 pts_lbl = QLabel(pts)
-                pts_lbl.setStyleSheet(f"color: {EASY_TX}; font-size: 11px; font-weight: bold; border: none;")
-
-                fecha_lbl = QLabel(fecha)
-                fecha_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; border: none;")
+                pts_lbl.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 11.5px; font-weight: bold;")
+                pts_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
+                sub_lbl = QLabel(f"{reps} reps · {dur} min")
+                sub_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px;")
+                sub_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
+                right_info.addWidget(pts_lbl)
+                right_info.addWidget(sub_lbl)
 
                 hist_row_layout.addLayout(left_info)
-                hist_row_layout.addWidget(fecha_lbl, alignment=Qt.AlignmentFlag.AlignRight)
-                hist_row_layout.addWidget(pts_lbl, alignment=Qt.AlignmentFlag.AlignRight)
+                hist_row_layout.addStretch()
+                hist_row_layout.addLayout(right_info)
 
                 self.history_layout.addWidget(hist_row)
 
     def _update_weekly_chart(self, historial):
-        """Calcula las sesiones realizadas por día de la semana actual y dibuja las barras."""
         while self.bar_layout.count():
             item = self.bar_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        # Contador por día de la semana (0 = Lunes, 6 = Domingo)
-        semana_counts = [0] * 7
+        # Generar los días de la semana (Dom, Lun, Mar, Mié, Jue, Vie, Sáb)
+        days = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
+        bars_data = [0] * 7
+        total_weekly_reps = 0
+
         now = datetime.now()
+        for item in historial:
+            ts = item.get("timestamp")
+            if ts:
+                dt = datetime.fromtimestamp(ts)
+                # Filtrar solo entrenamientos de los últimos 7 días
+                if (now - dt).days < 7:
+                    day_idx = (dt.weekday() + 1) % 7
+                    reps = item.get("repeticiones_totales", 0)
+                    bars_data[day_idx] += reps
+                    total_weekly_reps += reps
 
-        for session in historial:
-            try:
-                # Tratar de parsear fecha "YYYY-MM-DD HH:MM"
-                f_str = session.get("fecha", "")
-                if f_str:
-                    dt = datetime.strptime(f_str, "%Y-%m-%d %H:%M")
-                    # Verificar si corresponde a los últimos 7 días
-                    delta = (now - dt).days
-                    if 0 <= delta < 7:
-                        semana_counts[dt.weekday()] += 1
-            except Exception:
-                pass
+        self.weekly_total_lbl.setText(f"{total_weekly_reps} reps esta semana")
 
-        max_val = max(semana_counts) if max(semana_counts) > 0 else 1
-        dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-        dia_actual = now.weekday()
+        max_val = max(max(bars_data), 1)
 
-        for idx, (dia, val) in enumerate(zip(dias, semana_counts)):
-            col = QFrame()
-            col_layout = QVBoxLayout(col)
+        for i in range(7):
+            val = bars_data[i]
+            height_pct = min(1.0, val / max_val) if max_val > 0 else 0.05
+            bar_h = max(16, int(height_pct * 90))
+
+            col_frame = QFrame()
+            col_frame.setStyleSheet("border: none; background: transparent;")
+            col_layout = QVBoxLayout(col_frame)
             col_layout.setContentsMargins(0, 0, 0, 0)
             col_layout.setSpacing(4)
+            col_layout.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter)
 
-            is_today = (idx == dia_actual)
-            color_bar = EASY_TX if is_today else "#22C55E"
-            if not is_today and val > 0:
-                color_bar = "#1E3B2F"
-
-            bar_track = QFrame()
-            bar_track.setFixedSize(20, 100)
-            bar_track.setStyleSheet(f"background-color: #08090C; border: 1px solid {BORDER_DARK}; border-radius: 6px;")
-            track_layout = QVBoxLayout(bar_track)
-            track_layout.setContentsMargins(0, 0, 0, 0)
-            track_layout.setSpacing(0)
-            track_layout.addStretch()
-
-            val_height = int((val / max_val) * 98) if max_val > 0 else 0
-            if val_height < 4 and val > 0:
-                val_height = 4
-            
-            bar_fill = QFrame()
-            bar_fill.setFixedSize(18, val_height)
-            bar_fill.setStyleSheet(f"background-color: {color_bar}; border-radius: 4px; border: none;")
-            track_layout.addWidget(bar_fill, alignment=Qt.AlignmentFlag.AlignHCenter)
-
-            val_lbl = QLabel(str(val) if val > 0 else "-")
+            # Etiqueta con el valor exacto sobre la barra
+            val_lbl = QLabel(str(val) if val > 0 else "")
+            val_lbl.setStyleSheet(f"color: {ACCENT_GREEN if val > 0 else TEXT_MUTED}; font-size: 9px; font-weight: bold;")
             val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            val_lbl.setStyleSheet(f"color: {EASY_TX if is_today else TEXT_MUTED}; font-size: 9px; font-weight: bold; border: none;")
 
-            day_lbl = QLabel(dia)
+            bar_lbl = QLabel()
+            bar_lbl.setFixedWidth(20)
+            bar_lbl.setFixedHeight(bar_h)
+            
+            if val > 0:
+                bar_style = f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {ACCENT_GREEN}, stop:1 #059669); border-radius: 5px;"
+            else:
+                bar_style = f"background-color: {BORDER_DARK}; border-radius: 4px;"
+            bar_lbl.setStyleSheet(bar_style)
+
+            day_lbl = QLabel(days[i])
+            day_lbl.setStyleSheet(f"color: {TEXT_WHITE if val > 0 else TEXT_MUTED}; font-size: 10px; font-weight: bold;")
             day_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            day_lbl.setStyleSheet(f"color: {EASY_TX if is_today else TEXT_MUTED}; font-size: 10px; font-weight: bold; border: none;")
 
-            col_layout.addWidget(val_lbl)
-            col_layout.addWidget(bar_track, alignment=Qt.AlignmentFlag.AlignHCenter)
-            col_layout.addWidget(day_lbl)
-            self.bar_layout.addWidget(col)
+            col_layout.addWidget(val_lbl, alignment=Qt.AlignmentFlag.AlignHCenter)
+            col_layout.addWidget(bar_lbl, alignment=Qt.AlignmentFlag.AlignHCenter)
+            col_layout.addWidget(day_lbl, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+            self.bar_layout.addWidget(col_frame)

@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton, QScrollArea
+    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton, QScrollArea, QProgressBar
 )
 from PyQt6.QtCore import Qt, QSize
 from datetime import datetime
@@ -13,6 +13,7 @@ from ui.styles import (
     ACCENT_GREEN
 )
 from ui.icons import get_icon, get_icon_pixmap
+from core.gamification import GamificationEngine
 
 def get_current_date_spanish():
     months = {
@@ -25,7 +26,7 @@ def get_current_date_spanish():
 
 class DashboardView(QWidget):
     """
-    Panel de Control principal con métricas del usuario e historial de actividades recientes.
+    Panel de Control principal con métricas de gamificación del usuario (50 Niveles, Rangos, Misiones Diarias y Racha).
     """
     def __init__(self, shell_parent):
         super().__init__()
@@ -84,20 +85,54 @@ class DashboardView(QWidget):
         self.scroll_layout.setContentsMargins(0, 0, 0, 0)
         self.scroll_layout.setSpacing(16)
 
-        # ── 2.1 Tarjetas de Estadísticas (Stats Grid) ──────────────────────────
+        # ── 2.1 Tarjetas de Estadísticas (Gamificación) ──────────────────────
         stats_frame = QFrame()
         stats_layout = QHBoxLayout(stats_frame)
         stats_layout.setContentsMargins(0, 0, 0, 0)
         stats_layout.setSpacing(12)
 
-        self.puntos_card, self.puntos_val_lbl, self.puntos_tag_lbl = self._create_stat_card_widget("star", "TOTAL DE PUNTOS", "0 pts", "Nivel 1", EASY_BG, EASY_TX)
-        self.nivel_card, self.nivel_val_lbl, self.nivel_tag_lbl = self._create_stat_card_widget("level", "NIVEL ACTUAL", "1", "Explorador", FREE_BG, FREE_TX)
-        self.racha_card, self.racha_val_lbl, self.racha_tag_lbl = self._create_stat_card_widget("streak", "MEJOR RACHA", "1 días", "Activa", NORM_BG, NORM_TX)
+        self.puntos_card, self.puntos_val_lbl, self.puntos_tag_lbl = self._create_stat_card_widget("star", "TOTAL PUNTOS", "0 pts", "0 / 100 pts", EASY_BG, EASY_TX)
+        self.nivel_card, self.nivel_val_lbl, self.nivel_tag_lbl = self._create_stat_card_widget("level", "NIVEL DE USUARIO", "Nivel 1", "Novato Explorador", FREE_BG, FREE_TX)
+        self.racha_card, self.racha_val_lbl, self.racha_tag_lbl = self._create_stat_card_widget("streak", "RACHA DIARIA", "1 días", "Activa 🔥", NORM_BG, NORM_TX)
 
         stats_layout.addWidget(self.puntos_card)
         stats_layout.addWidget(self.nivel_card)
         stats_layout.addWidget(self.racha_card)
         self.scroll_layout.addWidget(stats_frame)
+
+        # Barra de progreso del nivel
+        self.progress_frame = QFrame()
+        self.progress_frame.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 10px; padding: 6px;")
+        progress_layout = QVBoxLayout(self.progress_frame)
+        progress_layout.setContentsMargins(12, 8, 12, 8)
+        progress_layout.setSpacing(4)
+
+        prog_title_layout = QHBoxLayout()
+        self.prog_label = QLabel("Progreso de Nivel")
+        self.prog_label.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; font-weight: bold;")
+        self.prog_val_lbl = QLabel("0%")
+        self.prog_val_lbl.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 11px; font-weight: bold;")
+        prog_title_layout.addWidget(self.prog_label)
+        prog_title_layout.addStretch()
+        prog_title_layout.addWidget(self.prog_val_lbl)
+        progress_layout.addLayout(prog_title_layout)
+
+        self.level_bar = QProgressBar()
+        self.level_bar.setFixedHeight(8)
+        self.level_bar.setTextVisible(False)
+        self.level_bar.setStyleSheet(f"""
+            QProgressBar {{
+                background-color: {BG_CARD_HOVER};
+                border-radius: 4px;
+                border: none;
+            }}
+            QProgressBar::chunk {{
+                background-color: {ACCENT_GREEN};
+                border-radius: 4px;
+            }}
+        """)
+        progress_layout.addWidget(self.level_bar)
+        self.scroll_layout.addWidget(self.progress_frame)
 
         # ── 2.2 Botones de Acción Rápida ──────────────────────────────────────
         actions_frame = QFrame()
@@ -156,9 +191,21 @@ class DashboardView(QWidget):
         actions_layout.addWidget(btn_est)
         self.scroll_layout.addWidget(actions_frame)
 
-        # ── 2.3 Listado de Actividades Recientes ──────────────────────────────
+        # ── 2.3 Misiones Diarias (Daily Quests) ──────────────────────────────
+        quest_title = QLabel("Misiones Diarias")
+        quest_title.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14px; color: {TEXT_WHITE}; font-weight: bold; margin-top: 6px;")
+        self.scroll_layout.addWidget(quest_title)
+
+        self.quests_container = QFrame()
+        self.quests_container.setStyleSheet("background: transparent; border: none;")
+        self.quests_layout = QHBoxLayout(self.quests_container)
+        self.quests_layout.setContentsMargins(0, 0, 0, 0)
+        self.quests_layout.setSpacing(10)
+        self.scroll_layout.addWidget(self.quests_container)
+
+        # ── 2.4 Listado de Actividades Recientes ──────────────────────────────
         act_title = QLabel("Actividades de la sesión")
-        act_title.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14px; color: {TEXT_WHITE}; font-weight: bold; margin-top: 10px;")
+        act_title.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14px; color: {TEXT_WHITE}; font-weight: bold; margin-top: 6px;")
         self.scroll_layout.addWidget(act_title)
 
         # Contenedor dinámico de lista de actividades
@@ -208,7 +255,7 @@ class DashboardView(QWidget):
         title_layout.addStretch()
 
         val = QLabel(value)
-        val.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 24px; font-weight: bold; border: none;")
+        val.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 20px; font-weight: bold; border: none;")
 
         tag = QLabel(badge)
         tag.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -238,40 +285,67 @@ class DashboardView(QWidget):
 
         uid = getattr(controller, 'current_user_id', None)
         puntos = 0
-        nivel = 1
         racha = 1
         historial = []
+        user_data_dict = {}
 
         if uid == "invitado" or not uid:
             guest_data = getattr(controller, 'guest_data', {})
+            user_data_dict = guest_data
             puntos = guest_data.get("puntos", 0)
-            nivel = guest_data.get("nivel", 1)
             racha = guest_data.get("racha", 1)
             historial = guest_data.get("historial", [])
         else:
             try:
                 fb_db = getattr(controller, 'fb_db', None)
                 if fb_db:
-                    user_data = fb_db.read_record(f"users/{uid}") or {}
-                    puntos = user_data.get("puntos", 0)
-                    nivel = user_data.get("nivel", 1)
-                    racha = user_data.get("racha", 1)
+                    user_data_dict = fb_db.read_record(f"users/{uid}") or {}
+                    puntos = user_data_dict.get("puntos", 0)
+                    racha = user_data_dict.get("racha", 1)
 
-                    hist_raw = user_data.get("historial", {})
+                    hist_raw = user_data_dict.get("historial", {})
                     if isinstance(hist_raw, dict):
-                        # Ordenar por timestamp descendente
                         historial = [v for k, v in sorted(hist_raw.items(), reverse=True)]
                     elif isinstance(hist_raw, list):
                         historial = hist_raw
             except Exception as e:
                 print(f"[DashboardView] Error leyendo datos de Firebase: {e}")
 
+        # Calcular nivel y rangos (50 Niveles)
+        lvl_info = GamificationEngine.get_level_data(puntos)
+        level = lvl_info["level"]
+        title_rank = lvl_info["title"]
+        curr_pts = lvl_info["current_level_pts"]
+        next_req = lvl_info["next_level_req"]
+        pct = lvl_info["progress_pct"]
+
         # Actualizar Tarjetas
         self.puntos_val_lbl.setText(f"{puntos:,} pts")
-        self.nivel_val_lbl.setText(str(nivel))
+        self.puntos_tag_lbl.setText(f"{curr_pts}/{next_req} pts")
+        
+        self.nivel_val_lbl.setText(f"Nivel {level}")
+        self.nivel_tag_lbl.setText(title_rank)
+        self.nivel_tag_lbl.setStyleSheet(f"background-color: {BG_CARD_HOVER}; color: {lvl_info['color']}; border-radius: 4px; font-size: 9px; font-weight: bold; padding: 3px 8px; border: none;")
+
         self.racha_val_lbl.setText(f"{racha} días")
 
-        # Limpiar lista anterior de actividades
+        # Actualizar Barra de Progreso
+        self.prog_label.setText(f"Progreso a Nivel {min(50, level + 1)}: {curr_pts} / {next_req} pts")
+        self.prog_val_lbl.setText(f"{pct}%")
+        self.level_bar.setValue(int(pct))
+
+        # ── Renderizar Misiones Diarias ──
+        while self.quests_layout.count():
+            item = self.quests_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        quests = GamificationEngine.get_daily_quests(user_data_dict)
+        for q in quests:
+            q_card = self._build_quest_card(q)
+            self.quests_layout.addWidget(q_card)
+
+        # ── Renderizar Lista de Actividades ──
         while self.activities_layout.count():
             item = self.activities_layout.takeAt(0)
             if item.widget():
@@ -283,7 +357,7 @@ class DashboardView(QWidget):
             empty_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px; padding: 20px; background-color: {BG_CARD}; border-radius: 8px;")
             self.activities_layout.addWidget(empty_lbl)
         else:
-            for item_data in historial[:6]:  # Mostrar los 6 más recientes
+            for item_data in historial[:6]:
                 nombre = item_data.get("reto_nombre", "Entrenamiento Libre")
                 fecha = item_data.get("fecha", "Reciente")
                 pts = f"+{item_data.get('puntos', 0)} pts"
@@ -304,6 +378,60 @@ class DashboardView(QWidget):
 
                 item_frame = self._build_activity_item(nombre, fecha, pts, desc, icon_name, bg, tx, brd)
                 self.activities_layout.addWidget(item_frame)
+
+    def _build_quest_card(self, quest):
+        card = QFrame()
+        card.setFixedHeight(68)
+        border_col = ACCENT_GREEN if quest["completed"] else BORDER_DARK
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_CARD};
+                border: 1px solid {border_col};
+                border-radius: 8px;
+            }}
+        """)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
+
+        top_row = QHBoxLayout()
+        title_lbl = QLabel(quest["title"])
+        title_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 11px; font-weight: bold; border: none;")
+        
+        status_txt = "✓ HECHO" if quest["completed"] else f"+{quest['reward_pts']} pts"
+        status_color = ACCENT_GREEN if quest["completed"] else EASY_TX
+        status_lbl = QLabel(status_txt)
+        status_lbl.setStyleSheet(f"color: {status_color}; font-size: 10px; font-weight: bold; border: none;")
+
+        top_row.addWidget(title_lbl)
+        top_row.addStretch()
+        top_row.addWidget(status_lbl)
+        layout.addLayout(top_row)
+
+        desc_lbl = QLabel(quest["desc"])
+        desc_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px; border: none;")
+        layout.addWidget(desc_lbl)
+
+        # Barra de progreso individual de misión
+        bar = QProgressBar()
+        bar.setFixedHeight(4)
+        bar.setTextVisible(False)
+        bar.setRange(0, quest["target"])
+        bar.setValue(quest["current"])
+        bar.setStyleSheet(f"""
+            QProgressBar {{
+                background-color: {BG_CARD_HOVER};
+                border: none;
+                border-radius: 2px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {ACCENT_GREEN if quest['completed'] else EASY_TX};
+                border-radius: 2px;
+            }}
+        """)
+        layout.addWidget(bar)
+
+        return card
 
     def _build_activity_item(self, nombre, hora, pts, desc, icon_name, bg, tx, brd):
         item = QFrame()

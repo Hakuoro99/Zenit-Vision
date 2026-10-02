@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton, 
     QDialog, QProgressBar, QMessageBox
 )
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QImage, QPixmap
 
 from ui.styles import (
@@ -15,12 +15,32 @@ from ui.icons import get_icon, get_icon_pixmap
 from core.camera_worker import CameraThread
 from core.analyzer import SessionAnalyzer
 
+# ── Catálogo de Información e Instrucciones de Ejercicios ────────────────────
+EXERCISE_INFO = {
+    "squat": {
+        "nombre": "Sentadillas",
+        "descripcion": "Flexiona tus rodillas bajando la cadera con la espalda recta como si fueras a sentarte, y vuelve a subir.",
+        "distancia": "1.5m - 2.5m de la cámara (cuerpo completo visible)"
+    },
+    "pushup": {
+        "nombre": "Lagartijas",
+        "descripcion": "Colócate en posición de tabla, flexiona los codos bajando el pecho de forma controlada y luego sube empujando.",
+        "distancia": "1.5m - 2.0m de la cámara (posición horizontal o diagonal visible)"
+    },
+    "jumping_jacks": {
+        "nombre": "Jumping Jacks",
+        "descripcion": "Salta abriendo piernas y levantando los brazos por encima de la cabeza, regresando a la posición erguida.",
+        "distancia": "1.8m - 2.5m de la cámara (brazos y piernas completas visibles)"
+    }
+}
+
+
 class WorkoutSummaryModal(QDialog):
-    """Modal emergente al finalizar el entrenamiento con resumen de estadísticas."""
+    """Modal emergente al finalizar el entrenamiento con resumen de estadísticas y puntos de gamificación."""
     def __init__(self, parent, session_summary):
         super().__init__(parent)
         self.setWindowTitle("Resumen de Entrenamiento")
-        self.setFixedSize(450, 380)
+        self.setFixedSize(460, 440)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.summary = session_summary
@@ -39,16 +59,16 @@ class WorkoutSummaryModal(QDialog):
             }}
         """)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(24, 24, 24, 24)
-        card_layout.setSpacing(14)
+        card_layout.setContentsMargins(22, 22, 22, 22)
+        card_layout.setSpacing(12)
 
         # Header
         header = QHBoxLayout()
         icon_lbl = QLabel()
-        icon_lbl.setPixmap(get_icon_pixmap("streak", ACCENT_GREEN, size=32))
+        icon_lbl.setPixmap(get_icon_pixmap("star", ACCENT_GREEN, size=32))
         
         title_lbl = QLabel("¡Entrenamiento Completado!")
-        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 18px; color: {TEXT_WHITE}; font-weight: bold; border: none; background: transparent;")
+        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 17px; color: {TEXT_WHITE}; font-weight: bold; border: none; background: transparent;")
         
         header.addWidget(icon_lbl)
         header.addWidget(title_lbl)
@@ -58,24 +78,40 @@ class WorkoutSummaryModal(QDialog):
         # Nombre del Reto
         reto_name = self.summary.get("reto_nombre", "Entrenamiento Libre")
         sub_lbl = QLabel(f"Resultados de {reto_name}")
-        sub_lbl.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 12px; border: none; background: transparent;")
+        sub_lbl.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11.5px; border: none; background: transparent;")
         card_layout.addWidget(sub_lbl)
 
-        # Rejilla de Métricas 2x2
+        # Banner de Puntos Ganados
+        pts_banner = QFrame()
+        pts_banner.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {ACCENT_GREEN}; border-radius: 10px;")
+        pts_banner_layout = QHBoxLayout(pts_banner)
+        pts_banner_layout.setContentsMargins(14, 8, 14, 8)
+        
+        pts_label = QLabel("PUNTOS GANADOS")
+        pts_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; font-weight: bold; border: none;")
+        pts_val = QLabel(f"+{self.summary.get('puntos', 0)} pts")
+        pts_val.setStyleSheet(f"color: {ACCENT_GREEN}; font-family: '{FONT_TITLE}'; font-size: 18px; font-weight: bold; border: none;")
+
+        pts_banner_layout.addWidget(pts_label)
+        pts_banner_layout.addStretch()
+        pts_banner_layout.addWidget(pts_val)
+        card_layout.addWidget(pts_banner)
+
+        # Rejilla de Métricas
         metrics_frame = QFrame()
         metrics_frame.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
         metrics_layout = QVBoxLayout(metrics_frame)
-        metrics_layout.setContentsMargins(16, 16, 16, 16)
-        metrics_layout.setSpacing(12)
+        metrics_layout.setContentsMargins(14, 12, 14, 12)
+        metrics_layout.setSpacing(8)
 
         def add_metric(label, value, icon_name, color):
             row = QHBoxLayout()
             ic = QLabel()
-            ic.setPixmap(get_icon_pixmap(icon_name, color, size=16))
+            ic.setPixmap(get_icon_pixmap(icon_name, color, size=14))
             lbl = QLabel(label)
             lbl.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none; background: transparent;")
             val = QLabel(str(value))
-            val.setStyleSheet(f"color: {TEXT_WHITE}; font-weight: bold; font-size: 12px; border: none; background: transparent;")
+            val.setStyleSheet(f"color: {TEXT_WHITE}; font-weight: bold; font-size: 11.5px; border: none; background: transparent;")
             
             row.addWidget(ic)
             row.addWidget(lbl)
@@ -83,17 +119,25 @@ class WorkoutSummaryModal(QDialog):
             row.addWidget(val)
             metrics_layout.addLayout(row)
 
-        add_metric("Repeticiones Totales", f"{self.summary.get('repeticiones_totales', 0)} reps", "squat", ACCENT_GREEN)
+        add_metric("Repeticiones Totales", f"{self.summary.get('repeticiones_totales', 0)} reps ({self.summary.get('rep_points', 0)} pts)", "squat", ACCENT_GREEN)
+        add_metric("Precisión Postural", f"{self.summary.get('precision_postural', 0)}% (+{self.summary.get('precision_bonus', 0)} pts)", "stats", "#8B5CF6")
         add_metric("Duración Total", f"{self.summary.get('duracion_minutos', 0)} min", "clock", "#3B82F6")
-        add_metric("Calorías Quemadas", f"{self.summary.get('calorias_estimadas', 0)} kcal", "streak", "#F59E0B")
-        add_metric("Precisión Postural", f"{self.summary.get('precision_postural', 0)}%", "stats", "#8B5CF6")
+        add_metric("Calorías Estimadas", f"{self.summary.get('calorias_estimadas', 0)} kcal", "streak", "#F59E0B")
 
         card_layout.addWidget(metrics_frame)
+
+        # Aviso de Logros Desbloqueados si los hay
+        logros_nuevos = self.summary.get("logros_nuevos", [])
+        if logros_nuevos:
+            logro_lbl = QLabel(f"🏆 ¡Has desbloqueado {len(logros_nuevos)} nuevo(s) logro(s)!")
+            logro_lbl.setStyleSheet(f"color: #F59E0B; font-size: 10.5px; font-weight: bold; border: none; background: transparent;")
+            logro_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            card_layout.addWidget(logro_lbl)
 
         # Botón Aceptar
         btn_accept = QPushButton("Guardar y Volver a Ejercicios")
         btn_accept.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_accept.setFixedHeight(38)
+        btn_accept.setFixedHeight(36)
         btn_accept.setStyleSheet(f"""
             QPushButton {{
                 background-color: {ACCENT_GREEN};
@@ -114,9 +158,262 @@ class WorkoutSummaryModal(QDialog):
         layout.addWidget(card)
 
 
+class ExerciseStartModal(QDialog):
+    """Modal informativo al iniciar la sesión con instrucciones, distancia requerida y ejercicio inicial."""
+    def __init__(self, parent, challenge_name, first_ex_type, target_reps):
+        super().__init__(parent)
+        self.setWindowTitle("Instrucciones de Entrenamiento")
+        self.setFixedSize(500, 480)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.challenge_name = challenge_name
+        self.ex_type = first_ex_type
+        self.target_reps = target_reps
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_SIDEBAR};
+                border: 2px solid {ACCENT_GREEN};
+                border-radius: 16px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(22, 22, 22, 22)
+        card_layout.setSpacing(12)
+
+        # Header
+        header = QHBoxLayout()
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(get_icon_pixmap("camera", ACCENT_GREEN, size=28))
+        
+        title_lbl = QLabel("¡Instrucciones de Sesión!")
+        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 18px; color: {TEXT_WHITE}; font-weight: bold; border: none;")
+        
+        header.addWidget(icon_lbl)
+        header.addWidget(title_lbl)
+        header.addStretch()
+        card_layout.addLayout(header)
+
+        # Subtítulo Reto
+        sub_lbl = QLabel(f"Reto seleccionado: {self.challenge_name}")
+        sub_lbl.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none;")
+        card_layout.addWidget(sub_lbl)
+
+        info = EXERCISE_INFO.get(self.ex_type, EXERCISE_INFO["squat"])
+        ex_name = info["nombre"]
+        meta_str = f"{self.target_reps} repeticiones" if self.target_reps > 0 else "Estilo Libre"
+
+        # Card Ejercicio Inicial & Meta
+        ex_card = QFrame()
+        ex_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {ACCENT_GREEN}; border-radius: 10px;")
+        ex_l = QVBoxLayout(ex_card)
+        ex_l.setContentsMargins(12, 10, 12, 10)
+        ex_l.setSpacing(4)
+
+        tag_lbl = QLabel("1. EJERCICIO INICIAL Y META")
+        tag_lbl.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 10px; font-weight: bold; border: none;")
+        val_lbl = QLabel(f"{ex_name} — Meta: {meta_str}")
+        val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 15px; font-weight: bold; border: none;")
+        ex_l.addWidget(tag_lbl)
+        ex_l.addWidget(val_lbl)
+        card_layout.addWidget(ex_card)
+
+        # Card Instrucciones de Movimiento
+        inst_card = QFrame()
+        inst_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
+        inst_l = QVBoxLayout(inst_card)
+        inst_l.setContentsMargins(12, 10, 12, 10)
+        inst_l.setSpacing(4)
+
+        inst_tag = QLabel("2. ¿QUÉ DEBES HACER?")
+        inst_tag.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; font-weight: bold; border: none;")
+        inst_text = QLabel(info["descripcion"])
+        inst_text.setWordWrap(True)
+        inst_text.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11.5px; border: none;")
+        inst_l.addWidget(inst_tag)
+        inst_l.addWidget(inst_text)
+        card_layout.addWidget(inst_card)
+
+        # Card Distancia Recomendada
+        dist_card = QFrame()
+        dist_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
+        dist_l = QVBoxLayout(dist_card)
+        dist_l.setContentsMargins(12, 10, 12, 10)
+        dist_l.setSpacing(4)
+
+        dist_tag = QLabel("3. DISTANCIA DE POSICIONAMIENTO")
+        dist_tag.setStyleSheet(f"color: #F59E0B; font-size: 10px; font-weight: bold; border: none;")
+        dist_text = QLabel(f"📐 {info['distancia']}.\nAsegúrate de que la cámara encuadre todo tu cuerpo claramente para el conteo automático.")
+        dist_text.setWordWrap(True)
+        dist_text.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 11.5px; border: none;")
+        dist_l.addWidget(dist_tag)
+        dist_l.addWidget(dist_text)
+        card_layout.addWidget(dist_card)
+
+        # Botón Continuar
+        btn_start = QPushButton("¡Entendido, Comenzar!")
+        btn_start.setFixedHeight(38)
+        btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_start.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_GREEN};
+                color: {BG_MAIN};
+                font-family: '{FONT_TITLE}';
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: #34D399;
+            }}
+        """)
+        btn_start.clicked.connect(self.accept)
+        card_layout.addWidget(btn_start)
+
+        layout.addWidget(card)
+
+
+class ExerciseTransitionModal(QDialog):
+    """Modal de aviso y transición automática al completar un ejercicio en la rutina."""
+    def __init__(self, parent, completed_ex_name, completed_reps, next_ex_type, next_target_reps):
+        super().__init__(parent)
+        self.setWindowTitle("¡Siguiente Ejercicio!")
+        self.setFixedSize(480, 420)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        self.completed_ex_name = completed_ex_name
+        self.completed_reps = completed_reps
+        self.next_ex_type = next_ex_type
+        self.next_target_reps = next_target_reps
+        self.seconds_left = 5
+
+        self._init_ui()
+
+        self.timer = QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self._update_countdown)
+        self.timer.start()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_SIDEBAR};
+                border: 2px solid {ACCENT_GREEN};
+                border-radius: 16px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(22, 22, 22, 22)
+        card_layout.setSpacing(12)
+
+        # Header
+        header = QHBoxLayout()
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(get_icon_pixmap("star", ACCENT_GREEN, size=30))
+        
+        title_lbl = QLabel("¡Ejercicio Completado! 🎉")
+        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 18px; color: {TEXT_WHITE}; font-weight: bold; border: none;")
+        
+        header.addWidget(icon_lbl)
+        header.addWidget(title_lbl)
+        header.addStretch()
+        card_layout.addLayout(header)
+
+        # Banner de logro del ejercicio finalizado
+        comp_banner = QFrame()
+        comp_banner.setStyleSheet(f"background-color: {ACCENT_GREEN_BG}; border: 1px solid {ACCENT_GREEN}; border-radius: 8px;")
+        cb_l = QHBoxLayout(comp_banner)
+        cb_l.setContentsMargins(12, 8, 12, 8)
+        
+        cb_lbl = QLabel(f"✓ {self.completed_ex_name} superado ({self.completed_reps}/{self.completed_reps} reps)")
+        cb_lbl.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 12px; font-weight: bold; border: none;")
+        cb_l.addWidget(cb_lbl)
+        card_layout.addWidget(comp_banner)
+
+        # Siguiente ejercicio info
+        info = EXERCISE_INFO.get(self.next_ex_type, EXERCISE_INFO["squat"])
+        next_name = info["nombre"]
+        meta_str = f"{self.next_target_reps} repeticiones" if self.next_target_reps > 0 else "Estilo Libre"
+
+        next_card = QFrame()
+        next_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
+        nc_l = QVBoxLayout(next_card)
+        nc_l.setContentsMargins(14, 12, 14, 12)
+        nc_l.setSpacing(6)
+
+        n_tag = QLabel("SIGUIENTE EJERCICIO EN LA RUTINA:")
+        n_tag.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9.5px; font-weight: bold; border: none;")
+        
+        n_val = QLabel(f"{next_name} — Meta: {meta_str}")
+        n_val.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 16px; font-weight: bold; border: none;")
+        
+        n_desc = QLabel(f"• Técnica: {info['descripcion']}\n• Posicionamiento: {info['distancia']}")
+        n_desc.setWordWrap(True)
+        n_desc.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none;")
+
+        nc_l.addWidget(n_tag)
+        nc_l.addWidget(n_val)
+        nc_l.addWidget(n_desc)
+        card_layout.addWidget(next_card)
+
+        # Indicador de cuenta regresiva
+        self.countdown_lbl = QLabel(f"Cambiando automáticamente en {self.seconds_left}s...")
+        self.countdown_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.countdown_lbl.setStyleSheet(f"color: #F59E0B; font-size: 12px; font-weight: bold; border: none;")
+        card_layout.addWidget(self.countdown_lbl)
+
+        # Botón Continuar Ahora
+        self.btn_next = QPushButton("Continuar Ahora ▷")
+        self.btn_next.setFixedHeight(38)
+        self.btn_next.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_next.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_GREEN};
+                color: {BG_MAIN};
+                font-family: '{FONT_TITLE}';
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: #34D399;
+            }}
+        """)
+        self.btn_next.clicked.connect(self._on_continue)
+        card_layout.addWidget(self.btn_next)
+
+        layout.addWidget(card)
+
+    def _update_countdown(self):
+        self.seconds_left -= 1
+        if self.seconds_left <= 0:
+            self.timer.stop()
+            self.accept()
+        else:
+            self.countdown_lbl.setText(f"Cambiando automáticamente en {self.seconds_left}s...")
+
+    def _on_continue(self):
+        self.timer.stop()
+        self.accept()
+
+
 class ActiveExerciseView(QWidget):
     """
     Vista de pantalla completa para el entrenamiento con visión por computadora en tiempo real.
+    Soporta rutinas por sesiones multi-ejercicio con cambios automáticos y avisos emergentes.
     """
     def __init__(self, shell_parent):
         super().__init__()
@@ -124,6 +421,9 @@ class ActiveExerciseView(QWidget):
         self.camera_thread = None
         self.current_challenge = None
         self.latest_stats = {}
+        self.session_exercises = []
+        self.current_ex_index = 0
+        self.is_transitioning = False
         self._init_ui()
 
     def _init_ui(self):
@@ -164,7 +464,7 @@ class ActiveExerciseView(QWidget):
         top_layout.addWidget(self.title_lbl)
 
         # Indicador "CÁMARA EN VIVO"
-        self.live_badge = QLabel(" ● CÁMARA EN VIVO")
+        self.live_badge = QLabel(" ● CÁMARA EN VIVO HD")
         self.live_badge.setStyleSheet(f"""
             color: {ACCENT_GREEN};
             font-size: 11px;
@@ -178,23 +478,23 @@ class ActiveExerciseView(QWidget):
 
         main_layout.addWidget(top_bar)
 
-        # ── 2. Zona de Contenido Principal (Video Feed + Panel Lateral) ────────
+        # ── 2. Zona de Contenido Principal (Video Feed Panorámico + Panel Lateral) ────────
         content_layout = QHBoxLayout()
         content_layout.setSpacing(16)
 
-        # Contenedor de Video (Izquierda)
+        # Contenedor de Video (Izquierda - Widescreen Panorámico)
         video_card = QFrame()
         video_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 12px;")
         video_card_layout = QVBoxLayout(video_card)
         video_card_layout.setContentsMargins(8, 8, 8, 8)
 
-        self.video_feed_lbl = QLabel("Iniciando cámara web...")
+        self.video_feed_lbl = QLabel("Iniciando cámara web HD...")
         self.video_feed_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_feed_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 14px; background-color: #000000; border-radius: 8px;")
-        self.video_feed_lbl.setMinimumSize(640, 480)
+        self.video_feed_lbl.setMinimumSize(854, 480)  # Formato 16:9 Panorámico HD
         
         video_card_layout.addWidget(self.video_feed_lbl)
-        content_layout.addWidget(video_card, stretch=3)
+        content_layout.addWidget(video_card, stretch=4)  # Mayor amplitud para video feed
 
         # Panel Control & Dashboard de Métricas (Derecha)
         panel_card = QFrame()
@@ -203,20 +503,44 @@ class ActiveExerciseView(QWidget):
         panel_layout.setContentsMargins(18, 18, 18, 18)
         panel_layout.setSpacing(14)
 
-        # Card Repeticiones
+        # Card Repeticiones (Realizadas / Meta + Progreso)
         reps_box = QFrame()
         reps_box.setStyleSheet(f"background-color: {BG_SIDEBAR}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
         reps_layout = QVBoxLayout(reps_box)
         reps_layout.setContentsMargins(14, 12, 14, 12)
+        reps_layout.setSpacing(6)
         
-        reps_title = QLabel("REPETICIONES")
-        reps_title.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; font-weight: bold; border: none; background: transparent;")
+        reps_title_row = QHBoxLayout()
+        reps_title = QLabel("REPETICIONES (ACTUAL / META)")
+        reps_title.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
         
-        self.reps_val_lbl = QLabel("0")
-        self.reps_val_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 38px; color: {ACCENT_GREEN}; font-weight: bold; border: none; background: transparent;")
+        self.reps_total_lbl = QLabel("Total: 0 reps")
+        self.reps_total_lbl.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
         
-        reps_layout.addWidget(reps_title)
+        reps_title_row.addWidget(reps_title)
+        reps_title_row.addStretch()
+        reps_title_row.addWidget(self.reps_total_lbl)
+        reps_layout.addLayout(reps_title_row)
+
+        self.reps_val_lbl = QLabel("0 / 0")
+        self.reps_val_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 32px; color: {ACCENT_GREEN}; font-weight: bold; border: none; background: transparent;")
         reps_layout.addWidget(self.reps_val_lbl)
+
+        self.reps_progress_bar = QProgressBar()
+        self.reps_progress_bar.setFixedHeight(8)
+        self.reps_progress_bar.setTextVisible(False)
+        self.reps_progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                background-color: {BG_CARD};
+                border: 1px solid {BORDER_DARK};
+                border-radius: 4px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {ACCENT_GREEN};
+                border-radius: 4px;
+            }}
+        """)
+        reps_layout.addWidget(self.reps_progress_bar)
         panel_layout.addWidget(reps_box)
 
         # Fila Métricas Secundarias (Tiempo y Calorías)
@@ -251,7 +575,7 @@ class ActiveExerciseView(QWidget):
         sec_layout.addWidget(cal_box)
         panel_layout.addLayout(sec_layout)
 
-        # Banner de Retroalimentación Postural
+        # Banner de Retroalimentación Postural y Distancia
         feedback_box = QFrame()
         feedback_box.setStyleSheet(f"background-color: {BG_SIDEBAR}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
         f_layout = QVBoxLayout(feedback_box)
@@ -259,7 +583,7 @@ class ActiveExerciseView(QWidget):
 
         f_title = QLabel("POSTURA Y RETROALIMENTACIÓN")
         f_title.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px; font-weight: bold;")
-        self.feedback_val_lbl = QLabel("Posiciónate frente a la cámara")
+        self.feedback_val_lbl = QLabel("Posiciónate a 1.5m - 2.5m de la cámara")
         self.feedback_val_lbl.setWordWrap(True)
         self.feedback_val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 12px; font-weight: bold;")
 
@@ -268,7 +592,7 @@ class ActiveExerciseView(QWidget):
         panel_layout.addWidget(feedback_box)
 
         # Selector rápido de Ejercicio
-        ex_select_lbl = QLabel("CAMBIAR EJERCICIO")
+        ex_select_lbl = QLabel("SELECCIÓN DE EJERCICIO EN SESIÓN")
         ex_select_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px; font-weight: bold;")
         panel_layout.addWidget(ex_select_lbl)
 
@@ -297,9 +621,9 @@ class ActiveExerciseView(QWidget):
                 }}
             """)
 
-        self.btn_ex_squat.clicked.connect(lambda: self._switch_exercise("squat"))
-        self.btn_ex_pushup.clicked.connect(lambda: self._switch_exercise("pushup"))
-        self.btn_ex_jacks.clicked.connect(lambda: self._switch_exercise("jumping_jacks"))
+        self.btn_ex_squat.clicked.connect(lambda: self._manual_switch_exercise("squat"))
+        self.btn_ex_pushup.clicked.connect(lambda: self._manual_switch_exercise("pushup"))
+        self.btn_ex_jacks.clicked.connect(lambda: self._manual_switch_exercise("jumping_jacks"))
 
         ex_btns_layout.addWidget(self.btn_ex_squat)
         ex_btns_layout.addWidget(self.btn_ex_pushup)
@@ -357,7 +681,7 @@ class ActiveExerciseView(QWidget):
         main_layout.addLayout(content_layout)
 
     def start_session(self, challenge_data):
-        """Inicializa la captura de cámara con los parámetros del reto seleccionado."""
+        """Inicializa la captura de cámara con la rutina por sesiones del reto seleccionado."""
         self.current_challenge = challenge_data or {
             "id": "ejercicio_libre",
             "nombre": "Ejercicio Libre",
@@ -366,29 +690,69 @@ class ActiveExerciseView(QWidget):
 
         self.title_lbl.setText(f"Entrenamiento: {self.current_challenge['nombre']}")
 
-        # Determinar tipo de ejercicio inicial
-        ex_type = "squat"
-        if self.current_challenge.get("ejercicios"):
-            first_ex = self.current_challenge["ejercicios"][0]
-            ex_type = first_ex[2] if len(first_ex) > 2 else "squat"
+        # Parsear secuencia de ejercicios en la rutina
+        raw_exercises = self.current_challenge.get("ejercicios", [("Sentadillas", "Libre", "squat")])
+        self.session_exercises = []
+        for item in raw_exercises:
+            name = item[0]
+            reps_str = item[1]
+            ex_type = item[2] if len(item) > 2 else "squat"
+            target_reps = 0
+            if "reps" in reps_str.lower():
+                try:
+                    target_reps = int(reps_str.split()[0])
+                except Exception:
+                    target_reps = 0
+            self.session_exercises.append({
+                "name": name,
+                "reps_str": reps_str,
+                "ex_type": ex_type,
+                "target_reps": target_reps
+            })
 
-        self._switch_exercise(ex_type)
+        self.current_ex_index = 0
+        self.is_transitioning = False
+
+        first_ex = self.session_exercises[0]
+
+        # 1. Modal informativo de bienvenida antes de iniciar la rutina
+        start_modal = ExerciseStartModal(
+            self,
+            self.current_challenge.get("nombre", "Entrenamiento"),
+            first_ex["ex_type"],
+            first_ex["target_reps"]
+        )
+        start_modal.exec()
+
+        self._switch_exercise(first_ex["ex_type"], target_reps=first_ex["target_reps"])
 
         # Detener hilo previo si existe
         if self.camera_thread and self.camera_thread.isRunning():
             self.camera_thread.stop()
 
-        # Iniciar nuevo hilo de cámara
-        self.camera_thread = CameraThread(camera_index=0, exercise_type=ex_type)
+        # Iniciar nuevo hilo de cámara con resolución HD y meta del primer ejercicio
+        self.camera_thread = CameraThread(
+            camera_index=0, 
+            exercise_type=first_ex["ex_type"], 
+            target_reps=first_ex["target_reps"]
+        )
         self.camera_thread.frame_processed.connect(self._on_frame_processed)
         self.camera_thread.stats_updated.connect(self._on_stats_updated)
         self.camera_thread.error_occurred.connect(self._on_camera_error)
         self.camera_thread.start()
 
-    def _switch_exercise(self, ex_type):
-        """Cambia el ejercicio activo y actualiza los estilos de los botones."""
+    def _manual_switch_exercise(self, ex_type):
+        """Permite cambio manual rápido de ejercicio sin meta forzada."""
+        self._switch_exercise(ex_type, target_reps=0, preserve_session_totals=True)
+
+    def _switch_exercise(self, ex_type, target_reps=0, preserve_session_totals=False):
+        """Cambia el ejercicio activo y actualiza los estilos de la interfaz."""
         if self.camera_thread:
-            self.camera_thread.set_exercise(ex_type)
+            self.camera_thread.set_exercise(
+                ex_type, 
+                target_reps=target_reps, 
+                preserve_session_totals=preserve_session_totals
+            )
 
         btn_map = {
             "squat": self.btn_ex_squat,
@@ -435,10 +799,23 @@ class ActiveExerciseView(QWidget):
         self.video_feed_lbl.setPixmap(scaled_pixmap)
 
     def _on_stats_updated(self, stats):
-        """Actualiza las tarjetas con información en tiempo real."""
+        """Actualiza las tarjetas con información en tiempo real y gestiona cambios por sesiones."""
         self.latest_stats = stats
-        self.reps_val_lbl.setText(str(stats["reps"]))
         
+        reps = stats["reps"]
+        target_reps = stats.get("target_reps", 0)
+        total_session_reps = stats.get("total_session_reps", reps)
+
+        if target_reps > 0:
+            self.reps_val_lbl.setText(f"{reps} / {target_reps}")
+            progress_pct = int((reps / float(target_reps)) * 100)
+            self.reps_progress_bar.setValue(min(100, progress_pct))
+        else:
+            self.reps_val_lbl.setText(f"{reps} reps")
+            self.reps_progress_bar.setValue(min(100, stats.get("progress", 0)))
+
+        self.reps_total_lbl.setText(f"Total: {total_session_reps} reps")
+
         # Formatear tiempo en mm:ss
         elapsed = stats["elapsed"]
         mins = elapsed // 60
@@ -455,6 +832,45 @@ class ActiveExerciseView(QWidget):
         else:
             self.feedback_val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 12px; font-weight: bold;")
 
+        # Transición automática de ejercicios al cumplir repeticiones de la sesión (solo fuera de preparación)
+        if not stats.get("in_prep", False) and target_reps > 0 and reps >= target_reps and not getattr(self, 'is_transitioning', False) and not getattr(self, '_is_finishing', False):
+            self.is_transitioning = True
+            current_ex = self.session_exercises[self.current_ex_index]
+            
+            if self.current_ex_index + 1 < len(self.session_exercises):
+                next_ex = self.session_exercises[self.current_ex_index + 1]
+                
+                # Pausar la cámara durante la notificación de transición
+                if self.camera_thread:
+                    self.camera_thread.pause()
+                
+                trans_dlg = ExerciseTransitionModal(
+                    self,
+                    completed_ex_name=current_ex["name"],
+                    completed_reps=reps,
+                    next_ex_type=next_ex["ex_type"],
+                    next_target_reps=next_ex["target_reps"]
+                )
+                trans_dlg.exec()
+                
+                self.current_ex_index += 1
+                self._switch_exercise(
+                    next_ex["ex_type"], 
+                    target_reps=next_ex["target_reps"], 
+                    preserve_session_totals=True
+                )
+                
+                if self.camera_thread:
+                    self.camera_thread.resume()
+                
+                self.is_transitioning = False
+            else:
+                # Rutina completa finalizada
+                if self.camera_thread:
+                    self.camera_thread.stop()
+                    self.camera_thread = None
+                self._finish_workout()
+
     def _on_camera_error(self, err_msg):
         QMessageBox.warning(self, "Error de Cámara", err_msg)
         self._exit_view()
@@ -465,7 +881,7 @@ class ActiveExerciseView(QWidget):
         if self.camera_thread.paused:
             self.camera_thread.resume()
             self.btn_pause.setText("Pausar Entrenamiento")
-            self.live_badge.setText(" ● CÁMARA EN VIVO")
+            self.live_badge.setText(" ● CÁMARA EN VIVO HD")
             self.live_badge.setStyleSheet(f"color: {ACCENT_GREEN}; background-color: {ACCENT_GREEN_BG}; border: 1px solid {ACCENT_GREEN}; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold;")
         else:
             self.camera_thread.pause()
@@ -483,12 +899,17 @@ class ActiveExerciseView(QWidget):
             self._exit_view()
 
     def _finish_workout(self):
-        # Detener hilo de cámara
+        if getattr(self, '_is_finishing', False):
+            return
+        self._is_finishing = True
+
+        # Detener hilo de cámara limpiamente
         if self.camera_thread:
             self.camera_thread.stop()
+            self.camera_thread = None
 
-        # Calcular métricas finales
-        reps = self.latest_stats.get("reps", 0)
+        # Calcular métricas finales consolidadas
+        reps = self.latest_stats.get("total_session_reps", self.latest_stats.get("reps", 0))
         elapsed = self.latest_stats.get("elapsed", 0)
         calories = self.latest_stats.get("calories", 0.0)
 
@@ -496,22 +917,31 @@ class ActiveExerciseView(QWidget):
             self.current_challenge, reps, elapsed, calories
         )
 
-        # Guardar en Firebase si hay usuario
+        # Guardar en Firebase o sesión de invitado
         controller = getattr(self.shell, 'controller', None)
         user_id = getattr(controller, 'current_user_id', None)
         fb_db = getattr(controller, 'fb_db', None)
 
-        SessionAnalyzer.save_session_to_firebase(fb_db, user_id, summary, controller=controller)
+        try:
+            SessionAnalyzer.save_session_to_firebase(fb_db, user_id, summary, controller=controller)
+        except Exception as e:
+            print(f"[ActiveExerciseView] Error guardando sesión: {e}")
 
         # Mostrar resumen modal
-        dlg = WorkoutSummaryModal(self, summary)
-        dlg.exec()
+        try:
+            dlg = WorkoutSummaryModal(self, summary)
+            dlg.exec()
+        except Exception as e:
+            print(f"[ActiveExerciseView] Error en modal de resumen: {e}")
 
         self._exit_view()
+        self._is_finishing = False
 
     def _exit_view(self):
-        if self.camera_thread and self.camera_thread.isRunning():
-            self.camera_thread.stop()
+        if self.camera_thread:
+            if self.camera_thread.isRunning():
+                self.camera_thread.stop()
+            self.camera_thread = None
         
         # Volver a la vista de ejercicios
         if hasattr(self.shell, 'navigate'):

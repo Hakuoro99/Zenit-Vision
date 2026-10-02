@@ -137,7 +137,7 @@ class PoseDetector:
 
     def find_angle(self, img, p1, p2, p3, draw=True):
         """
-        Calcula el ángulo 2D tradicional en grados en el plano de la imagen.
+        Calcula el ángulo 2D plano en grados en la imagen y dibuja el medidor visual interactivo.
         """
         if len(self.lm_list) <= max(p1, p2, p3):
             return 0.0
@@ -153,13 +153,31 @@ class PoseDetector:
             angle = 360.0 - angle
 
         if draw and img is not None:
-            cv2.line(img, (x1, y1), (x2, y2), (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.line(img, (x3, y3), (x2, y2), (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.circle(img, (x1, y1), 5, (0, 220, 255), cv2.FILLED)
-            cv2.circle(img, (x2, y2), 7, (0, 255, 100), cv2.FILLED)
-            cv2.circle(img, (x3, y3), 5, (0, 220, 255), cv2.FILLED)
-            cv2.putText(img, f"{int(angle)}°", (x2 - 30, y2 - 15),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+            # Color dinámico del medidor: verde si la flexión es profunda (< 110°), cian en transición, blanco extendido
+            meter_color = (0, 255, 120) if angle < 110 else (0, 220, 255) if angle < 145 else (255, 255, 255)
+            
+            # 1. Dibujar líneas de articulación destacadas
+            cv2.line(img, (x1, y1), (x2, y2), meter_color, 3, cv2.LINE_AA)
+            cv2.line(img, (x3, y3), (x2, y2), meter_color, 3, cv2.LINE_AA)
+            
+            # 2. Dibujar círculos de unión
+            cv2.circle(img, (x1, y1), 6, (0, 255, 200), cv2.FILLED, cv2.LINE_AA)
+            cv2.circle(img, (x2, y2), 9, meter_color, cv2.FILLED, cv2.LINE_AA)
+            cv2.circle(img, (x2, y2), 11, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.circle(img, (x3, y3), 6, (0, 255, 200), cv2.FILLED, cv2.LINE_AA)
+            
+            # 3. Renderizar medidor visual de grados sobre el punto pivote
+            txt = f"{int(angle)} deg"
+            (tw, th), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+            box_x1 = max(10, x2 - tw // 2 - 8)
+            box_y1 = max(10, y2 - 32)
+            box_x2 = min(img.shape[1] - 10, x2 + tw // 2 + 8)
+            box_y2 = max(30, y2 - 8)
+            
+            cv2.rectangle(img, (box_x1, box_y1), (box_x2, box_y2), (20, 20, 20), -1)
+            cv2.rectangle(img, (box_x1, box_y1), (box_x2, box_y2), meter_color, 1)
+            cv2.putText(img, txt, (box_x1 + 6, box_y2 - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
 
         return angle
 
