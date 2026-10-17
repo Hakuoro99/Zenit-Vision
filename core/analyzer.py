@@ -66,7 +66,8 @@ class SessionAnalyzer:
                 gd["total_minutos"] = round(gd.get("total_minutos", 0.0) + session_summary.get("duracion_minutos", 0.0), 1)
                 gd["total_sesiones"] = gd.get("total_sesiones", 0) + 1
                 
-                # Misiones diarias en modo invitado
+                # Misiones diarias en modo invitado con reset de 24 horas
+                GamificationEngine.check_and_reset_daily_quests(gd, controller=controller, user_id="invitado")
                 gd["today_reps"] = gd.get("today_reps", 0) + session_summary.get("repeticiones_totales", 0)
                 gd["today_sessions"] = gd.get("today_sessions", 0) + 1
                 gd["best_precision_today"] = max(gd.get("best_precision_today", 0), session_summary.get("precision_postural", 0))
@@ -88,6 +89,9 @@ class SessionAnalyzer:
             user_node = f"users/{user_id}"
             user_data = fb_db.read_record(user_node) or {}
 
+            # Verificar y reiniciar misiones si es un nuevo día
+            GamificationEngine.check_and_reset_daily_quests(user_data, fb_db=fb_db, user_id=user_id)
+
             puntos_prev = user_data.get("puntos", 0)
             nuevos_puntos = puntos_prev + session_summary.get("puntos", 0)
             lvl_info = GamificationEngine.get_level_data(nuevos_puntos)
@@ -107,6 +111,7 @@ class SessionAnalyzer:
             today_reps = user_data.get("today_reps", 0) + session_summary.get("repeticiones_totales", 0)
             today_sessions = user_data.get("today_sessions", 0) + 1
             best_precision = max(user_data.get("best_precision_today", 0), session_summary.get("precision_postural", 0))
+            today_str = datetime.now().strftime("%Y-%m-%d")
 
             # 2. Guardar la sesión individual en el historial
             fb_db.write_record(endpoint, session_summary)
@@ -123,7 +128,8 @@ class SessionAnalyzer:
                 f"{user_node}/total_sesiones": nuevas_sesiones,
                 f"{user_node}/today_reps": today_reps,
                 f"{user_node}/today_sessions": today_sessions,
-                f"{user_node}/best_precision_today": best_precision
+                f"{user_node}/best_precision_today": best_precision,
+                f"{user_node}/last_quest_date": today_str
             }
             
             fb_db.update_record("", updates)

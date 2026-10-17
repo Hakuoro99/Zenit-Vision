@@ -149,10 +149,53 @@ class GamificationEngine:
             return {"streak": 1, "bonus_pts": cls.STREAK_BONUSES[1], "updated": True, "date": today_str}
 
     @classmethod
-    def get_daily_quests(cls, user_data: dict) -> list:
+    def check_and_reset_daily_quests(cls, user_data: dict, fb_db=None, user_id=None, controller=None) -> dict:
         """
-        Retorna las 3 misiones diarias con su estado de avance.
+        Verifica si ha pasado un nuevo día (24 horas / cambio de fecha) y reinicia las misiones diarias si es necesario.
         """
+        if user_data is None:
+            return {}
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        last_quest_date = user_data.get("last_quest_date", "")
+
+        if not last_quest_date or last_quest_date != today_str:
+            user_data["today_reps"] = 0
+            user_data["today_sessions"] = 0
+            user_data["best_precision_today"] = 0
+            user_data["last_quest_date"] = today_str
+
+            if user_id == "invitado" or (controller and hasattr(controller, 'guest_data')):
+                if controller and hasattr(controller, 'guest_data') and isinstance(controller.guest_data, dict):
+                    controller.guest_data["today_reps"] = 0
+                    controller.guest_data["today_sessions"] = 0
+                    controller.guest_data["best_precision_today"] = 0
+                    controller.guest_data["last_quest_date"] = today_str
+            elif fb_db and user_id and user_id != "invitado":
+                try:
+                    user_node = f"users/{user_id}"
+                    fb_db.update_record("", {
+                        f"{user_node}/today_reps": 0,
+                        f"{user_node}/today_sessions": 0,
+                        f"{user_node}/best_precision_today": 0,
+                        f"{user_node}/last_quest_date": today_str
+                    })
+                    print(f"[GamificationEngine] Misiones diarias reiniciadas para {user_id} el {today_str}")
+                except Exception as e:
+                    print(f"[GamificationEngine] Error reiniciando misiones en Firebase: {e}")
+
+        return user_data
+
+    @classmethod
+    def get_daily_quests(cls, user_data: dict, fb_db=None, user_id=None, controller=None) -> list:
+        """
+        Retorna las 3 misiones diarias con su estado de avance, garantizando el reinicio de 24 horas.
+        """
+        if user_data is not None:
+            cls.check_and_reset_daily_quests(user_data, fb_db=fb_db, user_id=user_id, controller=controller)
+        else:
+            user_data = {}
+
         today_reps = user_data.get("today_reps", 0)
         today_sessions = user_data.get("today_sessions", 0)
         best_precision = user_data.get("best_precision_today", 0)

@@ -340,7 +340,8 @@ class DashboardView(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-        quests = GamificationEngine.get_daily_quests(user_data_dict)
+        fb_db = getattr(controller, 'fb_db', None)
+        quests = GamificationEngine.get_daily_quests(user_data_dict, fb_db=fb_db, user_id=uid, controller=controller)
         for q in quests:
             q_card = self._build_quest_card(q)
             self.quests_layout.addWidget(q_card)
