@@ -289,6 +289,34 @@ def get_icon_pixmap(name, color_hex, size=24):
         painter.setFont(font)
         painter.drawText(QRectF(0, 0, 24, 24), Qt.AlignmentFlag.AlignCenter, "@")
 
+    elif name == "volume" or name == "sound":
+        # Altavoz con ondas de audio
+        path = QPainterPath()
+        path.moveTo(4, 9)
+        path.lineTo(8, 9)
+        path.lineTo(13, 5)
+        path.lineTo(13, 19)
+        path.lineTo(8, 15)
+        path.lineTo(4, 15)
+        path.closeSubpath()
+        painter.drawPath(path)
+        painter.drawArc(12, 8, 6, 8, -45 * 16, 90 * 16)
+        painter.drawArc(15, 5, 8, 14, -45 * 16, 90 * 16)
+
+    elif name == "volume-x" or name == "sound-off":
+        # Altavoz silenciado con cruz
+        path = QPainterPath()
+        path.moveTo(4, 9)
+        path.lineTo(8, 9)
+        path.lineTo(13, 5)
+        path.lineTo(13, 19)
+        path.lineTo(8, 15)
+        path.lineTo(4, 15)
+        path.closeSubpath()
+        painter.drawPath(path)
+        painter.drawLine(16, 9, 21, 15)
+        painter.drawLine(21, 9, 16, 15)
+
     painter.end()
     return pixmap
 

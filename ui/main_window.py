@@ -103,8 +103,6 @@ class LogoutConfirmModal(QDialog):
                 border: 1px solid #3E4456;
             }}
         """)
-        btn_cancel.clicked.connect(self.reject)
-        
         btn_ok = QPushButton("Cerrar sesión")
         btn_ok.setFixedSize(110, 34)
         btn_ok.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -121,7 +119,19 @@ class LogoutConfirmModal(QDialog):
                 background-color: {"#DC2626" if is_guest else "#34D399"};
             }}
         """)
-        btn_ok.clicked.connect(self.accept)
+
+        def _on_cancel():
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+            self.reject()
+
+        def _on_confirm():
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_logout()
+            self.accept()
+
+        btn_cancel.clicked.connect(_on_cancel)
+        btn_ok.clicked.connect(_on_confirm)
         
         btn_layout.addWidget(btn_cancel)
         btn_layout.addWidget(btn_ok)
@@ -266,6 +276,11 @@ class AppShell(QWidget):
         main_layout.addWidget(self.content_stack)
 
     def navigate(self, key, data=None):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
         self._active_key = key
 
         # Actualizar estado Checked de los botones
@@ -344,6 +359,11 @@ class AppShell(QWidget):
                 print(f"[AppShell] Error actualizando perfil de usuario: {e}")
 
     def _logout(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
         uid = self.controller.current_user_id
         is_guest = (uid == "invitado")
         
@@ -396,12 +416,15 @@ class MainWindow(QMainWindow):
         self.show_login()
 
     def show_login(self):
-        # Mostraremos la vista del login en PyQt6 (se creará a continuación)
+        # Mostraremos la vista del login en PyQt6
         try:
             from ui.views.login_view import LoginView
             if not hasattr(self, 'login_view'):
                 self.login_view = LoginView(self)
                 self.central_stack.addWidget(self.login_view)
+            else:
+                if hasattr(self.login_view, 'load_local_profiles'):
+                    self.login_view.load_local_profiles()
             self.central_stack.setCurrentWidget(self.login_view)
         except ImportError:
             print("[Zenit-Vision] LoginView aún no implementado en ui/views/")
@@ -419,6 +442,11 @@ class MainWindow(QMainWindow):
             print("[Zenit-Vision] RegisterView aún no implementado en ui/views/")
 
     def login_success(self, user_id):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_select()
+        except Exception:
+            pass
         self.current_user_id = user_id
         
         # Procesar Bono de Racha Diaria

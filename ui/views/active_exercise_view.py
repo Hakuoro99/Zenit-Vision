@@ -14,6 +14,7 @@ from ui.styles import (
 from ui.icons import get_icon, get_icon_pixmap
 from core.camera_worker import CameraThread
 from core.analyzer import SessionAnalyzer
+from core.audio_manager import AudioManager
 
 # ── Catálogo de Información e Instrucciones de Ejercicios ────────────────────
 EXERCISE_INFO = {
@@ -47,6 +48,7 @@ class WorkoutSummaryModal(QDialog):
         self._init_ui()
 
     def _init_ui(self):
+        AudioManager.instance().play_victory()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
 
@@ -298,6 +300,7 @@ class ExerciseTransitionModal(QDialog):
         self._init_ui()
 
     def _init_ui(self):
+        AudioManager.instance().play_transition()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
 
@@ -432,6 +435,14 @@ class ActiveExerciseView(QWidget):
         self.session_exercises = []
         self.current_ex_index = 0
         self.is_transitioning = False
+        
+        # Audio manager y estados de sonido
+        self.audio = AudioManager.instance()
+        self._last_reps_count = 0
+        self._last_prep_sec = None
+        self._was_in_prep = True
+        self._last_feedback_type = "info"
+        
         self._init_ui()
 
     def _init_ui(self):
@@ -483,6 +494,26 @@ class ActiveExerciseView(QWidget):
             padding: 4px 8px;
         """)
         top_layout.addWidget(self.live_badge, alignment=Qt.AlignmentFlag.AlignRight)
+
+        # Botón para silenciar / activar efectos de sonido
+        self.btn_sound = QPushButton()
+        self.btn_sound.setFixedSize(32, 32)
+        self.btn_sound.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_sound.setIcon(get_icon("volume", ACCENT_GREEN, size=16))
+        self.btn_sound.setIconSize(QSize(16, 16))
+        self.btn_sound.setToolTip("Silenciar / Activar Efectos de Sonido")
+        self.btn_sound.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BG_CARD};
+                border: 1px solid {BORDER_DARK};
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {BORDER_DARK};
+            }}
+        """)
+        self.btn_sound.clicked.connect(self._toggle_sound)
+        top_layout.addWidget(self.btn_sound)
 
         main_layout.addWidget(top_bar)
 
@@ -720,6 +751,10 @@ class ActiveExerciseView(QWidget):
 
         self.current_ex_index = 0
         self.is_transitioning = False
+        self._last_reps_count = 0
+        self._last_prep_sec = None
+        self._was_in_prep = True
+        self._last_feedback_type = "info"
 
         first_ex = self.session_exercises[0]
 
@@ -755,6 +790,7 @@ class ActiveExerciseView(QWidget):
 
     def _switch_exercise(self, ex_type, target_reps=0, preserve_session_totals=False):
         """Cambia el ejercicio activo y actualiza los estilos de la interfaz."""
+        self._last_reps_count = 0
         if self.camera_thread:
             self.camera_thread.set_exercise(
                 ex_type, 
@@ -813,6 +849,32 @@ class ActiveExerciseView(QWidget):
         reps = stats["reps"]
         target_reps = stats.get("target_reps", 0)
         total_session_reps = stats.get("total_session_reps", reps)
+
+        # ── Audio Feedback en Vivo ───────────────────────────────────────────
+        in_prep = stats.get("in_prep", False)
+        rem_prep = stats.get("remaining_prep", 0)
+
+        if in_prep:
+            if rem_prep != self._last_prep_sec and rem_prep > 0:
+                self._last_prep_sec = rem_prep
+                self.audio.play_countdown_tick()
+        elif self._was_in_prep and not in_prep:
+            # Cambio de preparación a entrenamiento activo
+            self.audio.play_countdown_go()
+
+        self._was_in_prep = in_prep
+
+        if not in_prep:
+            if reps > self._last_reps_count:
+                self.audio.play_rep()
+                self._last_reps_count = reps
+            elif reps < self._last_reps_count:
+                self._last_reps_count = reps
+
+        fb_type = stats.get("feedback_type", "info")
+        if fb_type == "warning" and self._last_feedback_type != "warning" and not in_prep:
+            self.audio.play_warning()
+        self._last_feedback_type = fb_type
 
         if target_reps > 0:
             self.reps_val_lbl.setText(f"{reps} / {target_reps}")
@@ -884,6 +946,7 @@ class ActiveExerciseView(QWidget):
         self._exit_view()
 
     def _toggle_pause(self):
+        self.audio.play_click()
         if not self.camera_thread:
             return
         if self.camera_thread.paused:
@@ -898,6 +961,7 @@ class ActiveExerciseView(QWidget):
             self.live_badge.setStyleSheet(f"color: #F59E0B; background-color: #1F170A; border: 1px solid #F59E0B; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold;")
 
     def _confirm_exit(self):
+        self.audio.play_click()
         reply = QMessageBox.question(
             self, "Confirmar Salida",
             "¿Deseas salir del entrenamiento actual? Se perderá el progreso sin guardar.",
@@ -946,6 +1010,7 @@ class ActiveExerciseView(QWidget):
         self._is_finishing = False
 
     def _exit_view(self):
+        self.audio.play_click()
         if self.camera_thread:
             if self.camera_thread.isRunning():
                 self.camera_thread.stop()
@@ -954,3 +1019,13 @@ class ActiveExerciseView(QWidget):
         # Volver a la vista de ejercicios
         if hasattr(self.shell, 'navigate'):
             self.shell.navigate("ejercicios")
+
+    def _toggle_sound(self):
+        """Silencia o reactiva los efectos de sonido."""
+        is_muted = self.audio.toggle_sfx_mute()
+        icon_name = "volume-x" if is_muted else "volume"
+        icon_color = TEXT_MUTED if is_muted else ACCENT_GREEN
+        self.btn_sound.setIcon(get_icon(icon_name, icon_color, size=16))
+        if not is_muted:
+            self.audio.play_click()
+

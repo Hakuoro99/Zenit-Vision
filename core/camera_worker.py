@@ -161,7 +161,8 @@ class CameraThread(QThread):
                     "elapsed": self.counter.get_elapsed_time() if not is_prep else 0,
                     "calories": self.counter.get_calories(),
                     "exercise_type": ex_type,
-                    "in_prep": is_prep
+                    "in_prep": is_prep,
+                    "remaining_prep": remaining_prep if is_prep else 0
                 })
 
             time.sleep(0.02)  # Aprox 45-50 FPS máximo

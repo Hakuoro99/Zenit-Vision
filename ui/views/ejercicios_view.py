@@ -381,6 +381,8 @@ class EjerciciosView(QWidget):
     def _iniciar(self, data):
         """Navega a la pantalla del ejercicio activo guardando el reto actual."""
         try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_select()
             if hasattr(self.shell, 'controller'):
                 self.shell.controller.ejercicio_actual = data
             print(f"[Zenit-Vision QTs] Iniciando reto: {data['nombre']} (Dificultad: {data['badge']})")

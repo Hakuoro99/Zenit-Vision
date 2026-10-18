@@ -1,9 +1,11 @@
 import os
 import json
 import base64
+import time
+import random
 import bcrypt
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QLineEdit, QPushButton, QFileDialog, QDialog
+    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QLineEdit, QPushButton, QFileDialog, QDialog, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QPixmap
@@ -72,7 +74,11 @@ class ZenitInfoDialog(QDialog):
                 background-color: #047857;
             }}
         """)
-        btn_ok.clicked.connect(self.accept)
+        def _on_ok():
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+            self.accept()
+        btn_ok.clicked.connect(_on_ok)
         
         card_layout.addWidget(lbl_title)
         card_layout.addWidget(lbl_msg)
@@ -217,6 +223,760 @@ class ZenitConfirmDialog(QDialog):
         layout.addWidget(card)
 
 
+def _actualizar_password_en_sistema(user_id, shell, new_password):
+    """
+    Sincroniza la nueva contraseña de forma segura en:
+    1. Firebase Realtime Database (con hash bcrypt)
+    2. local_profiles.json (con hash bcrypt)
+    3. Firebase Authentication (directamente con el cliente de auth)
+    """
+    hashed = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode()
+
+    # 1. Actualizar en Firebase RTDB
+    if shell and hasattr(shell, 'controller') and shell.controller and shell.controller.fb_db:
+        try:
+            shell.controller.fb_db.update_record(f"users/{user_id}", {"password": hashed})
+        except Exception as e:
+            print(f"[PasswordSync] Error actualizando en Firebase RTDB: {e}")
+
+    # 2. Actualizar en local_profiles.json
+    if os.path.exists("local_profiles.json"):
+        try:
+            with open("local_profiles.json", "r") as f:
+                profs = json.load(f)
+            if user_id in profs:
+                profs[user_id]["password"] = hashed
+                with open("local_profiles.json", "w") as f:
+                    json.dump(profs, f)
+        except Exception as e:
+            print(f"[PasswordSync] Error actualizando local_profiles: {e}")
+
+    # 3. Actualizar en Firebase Auth si la cuenta existe
+    try:
+        from database import firebase_auth as fb_auth
+        auth_client = fb_auth._get_auth()
+        auth_client.update_user(user_id, password=new_password)
+    except Exception as e:
+        print(f"[PasswordSync] Error actualizando Firebase Auth: {e}")
+
+
+def _build_modal_field(label_text, is_pw=False, placeholder=""):
+    frame = QFrame()
+    frame.setStyleSheet("background: transparent; border: none;")
+    v = QVBoxLayout(frame)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.setSpacing(4)
+    lbl = QLabel(label_text.upper())
+    lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
+    ent = QLineEdit()
+    ent.setPlaceholderText(placeholder)
+    if is_pw:
+        ent.setEchoMode(QLineEdit.EchoMode.Password)
+    ent.setFixedHeight(34)
+    ent.setStyleSheet(f"""
+        QLineEdit {{
+            background-color: #22252A;
+            border: 1px solid #2A2D34;
+            border-radius: 8px;
+            color: {TEXT_WHITE};
+            font-size: 11.5px;
+            padding: 6px 10px;
+        }}
+        QLineEdit:hover {{
+            border: 1px solid #3E4456;
+        }}
+        QLineEdit:focus {{
+            border: 1.5px solid {ACCENT_GREEN};
+            background-color: #121316;
+        }}
+    """)
+    v.addWidget(lbl)
+    v.addWidget(ent)
+    return frame, ent
+
+
+class PasswordSettingsModal(QDialog):
+    """
+    Modal minimalista y estético para cambiar la contraseña usando la clave actual.
+    Incluye la pregunta '¿Olvidaste tu contraseña? Haz clic aquí' directamente debajo
+    del botón de guardar, que abre el modal de restablecimiento por correo.
+    """
+    def __init__(self, parent, user_id, user_email, user_name):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setModal(True)
+        self.parent_view = parent
+        self.user_id = user_id
+        self.user_email = user_email or "correo@ejemplo.com"
+        self.user_name = user_name or "Usuario"
+        self.shell = parent.shell if hasattr(parent, 'shell') else None
+
+        self._init_ui()
+
+    def _init_ui(self):
+        self.setFixedSize(410, 375)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        card = QFrame()
+        card.setFixedSize(410, 375)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_CARD};
+                border: 1.5px solid #2E323A;
+                border-radius: 16px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(24, 20, 24, 18)
+        card_layout.setSpacing(10)
+
+        # 1. Cabecera minimalista
+        header = QHBoxLayout()
+        header.setSpacing(10)
+
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(get_icon_pixmap("lock", ACCENT_GREEN, size=20))
+        header.addWidget(icon_lbl)
+
+        title_v = QVBoxLayout()
+        title_v.setSpacing(2)
+        title_lbl = QLabel("Seguridad de Contraseña")
+        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14.5px; color: {TEXT_WHITE}; font-weight: bold; border: none; background: transparent;")
+        sub_lbl = QLabel("Actualiza tu clave de acceso")
+        sub_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10.5px; border: none; background: transparent;")
+        title_v.addWidget(title_lbl)
+        title_v.addWidget(sub_lbl)
+        header.addLayout(title_v)
+
+        header.addStretch()
+
+        btn_close = QPushButton("✕")
+        btn_close.setFixedSize(26, 26)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {TEXT_MUTED};
+                border: none;
+                border-radius: 13px;
+                font-size: 13px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #2E323A;
+                color: {TEXT_WHITE};
+            }}
+        """)
+        btn_close.clicked.connect(self._cerrar)
+        header.addWidget(btn_close)
+        card_layout.addLayout(header)
+
+        # 2. Campos de contraseña
+        f_cur, self.ent_cur_pw = _build_modal_field("Contraseña actual", is_pw=True, placeholder="Tu contraseña actual obligatoria")
+        f_new, self.ent_new_pw = _build_modal_field("Nueva contraseña", is_pw=True, placeholder="Mínimo 6 caracteres")
+        f_conf, self.ent_conf_pw = _build_modal_field("Confirmar nueva contraseña", is_pw=True, placeholder="Repite tu nueva contraseña")
+
+        card_layout.addWidget(f_cur)
+        card_layout.addWidget(f_new)
+        card_layout.addWidget(f_conf)
+
+        # 3. Botón Guardar nueva contraseña
+        btn_save = QPushButton("Guardar nueva contraseña")
+        btn_save.setFixedHeight(35)
+        btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_GREEN};
+                color: #0B0C0E;
+                border: none;
+                border-radius: 8px;
+                font-family: '{FONT_TITLE}';
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #34D399;
+            }}
+            QPushButton:pressed {{
+                background-color: #10B981;
+            }}
+        """)
+        btn_save.clicked.connect(self._cambiar_con_actual)
+        card_layout.addWidget(btn_save)
+
+        # 4. Enlace directo bajo el botón: "¿Olvidaste tu contraseña? Haz clic aquí"
+        btn_forgot = QPushButton("¿Olvidaste tu contraseña? Haz clic aquí")
+        btn_forgot.setFixedHeight(22)
+        btn_forgot.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_forgot.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {TEXT_MUTED};
+                border: none;
+                font-size: 11px;
+                font-weight: 500;
+                text-align: center;
+                padding-top: 2px;
+            }}
+            QPushButton:hover {{
+                color: {ACCENT_GREEN};
+                text-decoration: underline;
+            }}
+        """)
+        btn_forgot.clicked.connect(self._abrir_recuperacion)
+        card_layout.addWidget(btn_forgot)
+
+        layout.addWidget(card)
+
+    def _abrir_recuperacion(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+        parent = self.parent_view
+        user_id = self.user_id
+        user_email = self.user_email
+        user_name = self.user_name
+        shell = self.shell
+        self.reject()
+
+        modal = PasswordResetCodeModal(parent, user_id, user_email, user_name, shell)
+        modal.exec()
+
+    def _cambiar_con_actual(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+
+        cur_pw = self.ent_cur_pw.text().strip()
+        new_pw = self.ent_new_pw.text().strip()
+        conf_pw = self.ent_conf_pw.text().strip()
+
+        if not cur_pw or not new_pw or not conf_pw:
+            dialog = ZenitInfoDialog(self, "Campos Incompletos", "Por favor completa todos los campos de contraseña.")
+            dialog.exec()
+            return
+
+        if new_pw != conf_pw:
+            dialog = ZenitInfoDialog(self, "Error de Coincidencia", "Las nuevas contraseñas no coinciden.")
+            dialog.exec()
+            return
+
+        if len(new_pw) < 6:
+            dialog = ZenitInfoDialog(self, "Contraseña Muy Corta", "La nueva contraseña debe tener al menos 6 caracteres.")
+            dialog.exec()
+            return
+
+        # Validar contraseña actual
+        stored_hash = None
+        if self.shell and self.shell.controller and self.shell.controller.fb_db:
+            try:
+                user_data = self.shell.controller.fb_db.read_record(f"users/{self.user_id}")
+                if user_data:
+                    stored_hash = user_data.get("password")
+            except Exception:
+                pass
+
+        if not stored_hash and os.path.exists("local_profiles.json"):
+            try:
+                with open("local_profiles.json", "r") as f:
+                    profs = json.load(f)
+                    if self.user_id in profs:
+                        stored_hash = profs[self.user_id].get("password")
+            except Exception:
+                pass
+
+        if not stored_hash:
+            dialog = ZenitInfoDialog(self, "Error", "No se encontró registro de contraseña para este usuario.")
+            dialog.exec()
+            return
+
+        if not bcrypt.checkpw(cur_pw.encode('utf-8'), stored_hash.encode('utf-8')):
+            dialog = ZenitInfoDialog(self, "Contraseña Incorrecta", "La contraseña actual no es correcta. Si la has olvidado, haz clic en '¿Olvidaste tu contraseña? Haz clic aquí'.")
+            dialog.exec()
+            return
+
+        _actualizar_password_en_sistema(self.user_id, self.shell, new_pw)
+        dialog = ZenitInfoDialog(self, "Contraseña Actualizada", "✓ Tu contraseña ha sido cambiada con éxito.")
+        dialog.exec()
+        self.accept()
+
+    def _cerrar(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+        self.reject()
+
+
+class PasswordResetCodeModal(QDialog):
+    """
+    Modal minimalista y estético para verificar el código OTP de seguridad por correo.
+    Muestra la fila del correo, el campo 'CÓDIGO' limpio y el botón 'Verificar código'.
+    Al verificarse exitosamente, abre el modal de 'Nueva Contraseña'.
+    """
+    def __init__(self, parent, user_id, user_email, user_name, shell=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setModal(True)
+        self.parent_view = parent
+        self.user_id = user_id
+        self.user_email = user_email or "correo@ejemplo.com"
+        self.user_name = user_name or "Usuario"
+        self.shell = shell or (parent.shell if hasattr(parent, 'shell') else None)
+
+        self.generated_code = None
+        self.code_timestamp = 0
+
+        self._init_ui()
+
+    def _init_ui(self):
+        self.setFixedSize(410, 315)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        card = QFrame()
+        card.setFixedSize(410, 315)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_CARD};
+                border: 1.5px solid #2E323A;
+                border-radius: 16px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(24, 20, 24, 18)
+        card_layout.setSpacing(10)
+
+        # 1. Cabecera
+        header = QHBoxLayout()
+        header.setSpacing(10)
+
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(get_icon_pixmap("at", ACCENT_GREEN, size=20))
+        header.addWidget(icon_lbl)
+
+        title_v = QVBoxLayout()
+        title_v.setSpacing(2)
+        title_lbl = QLabel("Restablecer Contraseña")
+        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14.5px; color: {TEXT_WHITE}; font-weight: bold; border: none; background: transparent;")
+        sub_lbl = QLabel("Verificación de seguridad por correo")
+        sub_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10.5px; border: none; background: transparent;")
+        title_v.addWidget(title_lbl)
+        title_v.addWidget(sub_lbl)
+        header.addLayout(title_v)
+
+        header.addStretch()
+
+        btn_close = QPushButton("✕")
+        btn_close.setFixedSize(26, 26)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {TEXT_MUTED};
+                border: none;
+                border-radius: 13px;
+                font-size: 13px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #2E323A;
+                color: {TEXT_WHITE};
+            }}
+        """)
+        btn_close.clicked.connect(self._cerrar)
+        header.addWidget(btn_close)
+        card_layout.addLayout(header)
+
+        # 2. Fila de Correo con Botón de Envío
+        email_box = QFrame()
+        email_box.setStyleSheet("QFrame { background-color: #181A1D; border: 1px solid #2A2D34; border-radius: 8px; }")
+        eb_layout = QHBoxLayout(email_box)
+        eb_layout.setContentsMargins(10, 6, 10, 6)
+        eb_layout.setSpacing(8)
+
+        ic_at = QLabel()
+        ic_at.setPixmap(get_icon_pixmap("at", ACCENT_GREEN, size=14))
+        lbl_em = QLabel(self.user_email)
+        lbl_em.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 11px; font-weight: bold; border: none; background: transparent;")
+
+        self.btn_send_code = QPushButton("Enviar código")
+        self.btn_send_code.setFixedHeight(26)
+        self.btn_send_code.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_send_code.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2A2D34;
+                color: {ACCENT_GREEN};
+                border: 1px solid #3E4456;
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 0px 12px;
+            }}
+            QPushButton:hover {{
+                background-color: #3E4456;
+                color: #FFFFFF;
+            }}
+        """)
+        self.btn_send_code.clicked.connect(self._enviar_codigo_correo)
+
+        eb_layout.addWidget(ic_at)
+        eb_layout.addWidget(lbl_em)
+        eb_layout.addStretch()
+        eb_layout.addWidget(self.btn_send_code)
+        card_layout.addWidget(email_box)
+
+        # Estado del envío
+        self.lbl_reset_status = QLabel("Presiona 'Enviar código' para recibir la clave en tu correo.")
+        self.lbl_reset_status.setWordWrap(True)
+        self.lbl_reset_status.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; border: none; background: transparent;")
+        card_layout.addWidget(self.lbl_reset_status)
+
+        # 3. Campo CÓDIGO (Limpio, sin 'Ejemplo: 742918')
+        code_box = QFrame()
+        code_box.setStyleSheet("background: transparent; border: none;")
+        cb_layout = QVBoxLayout(code_box)
+        cb_layout.setContentsMargins(0, 0, 0, 0)
+        cb_layout.setSpacing(4)
+
+        lbl_code = QLabel("CÓDIGO")
+        lbl_code.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
+
+        self.ent_reset_code = QLineEdit()
+        self.ent_reset_code.setMaxLength(6)
+        self.ent_reset_code.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.ent_reset_code.setFixedHeight(34)
+        self.ent_reset_code.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: #121316;
+                border: 1.5px solid #2A2D34;
+                border-radius: 8px;
+                color: {ACCENT_GREEN};
+                font-size: 14px;
+                font-weight: bold;
+                letter-spacing: 4px;
+                padding: 4px 10px;
+            }}
+            QLineEdit:hover {{
+                border: 1.5px solid #3E4456;
+            }}
+            QLineEdit:focus {{
+                border: 1.5px solid {ACCENT_GREEN};
+            }}
+        """)
+        cb_layout.addWidget(lbl_code)
+        cb_layout.addWidget(self.ent_reset_code)
+        card_layout.addWidget(code_box)
+
+        # 4. Botón Verificar código
+        btn_verify = QPushButton("Verificar código")
+        btn_verify.setFixedHeight(35)
+        btn_verify.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_verify.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_GREEN};
+                color: #0B0C0E;
+                border: none;
+                border-radius: 8px;
+                font-family: '{FONT_TITLE}';
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #34D399;
+            }}
+            QPushButton:pressed {{
+                background-color: #10B981;
+            }}
+        """)
+        btn_verify.clicked.connect(self._verificar_codigo)
+        card_layout.addWidget(btn_verify)
+
+        # 5. Volver a cambiar con contraseña actual
+        btn_back = QPushButton("← Volver a cambiar con contraseña actual")
+        btn_back.setFixedHeight(22)
+        btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_back.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {TEXT_MUTED};
+                border: none;
+                font-size: 11px;
+                font-weight: 500;
+                text-align: center;
+                padding-top: 2px;
+            }}
+            QPushButton:hover {{
+                color: {TEXT_WHITE};
+            }}
+        """)
+        btn_back.clicked.connect(self._volver_a_cambio)
+        card_layout.addWidget(btn_back)
+
+        layout.addWidget(card)
+
+    def _volver_a_cambio(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+        parent = self.parent_view
+        user_id = self.user_id
+        user_email = self.user_email
+        user_name = self.user_name
+        shell = self.shell
+        self.reject()
+
+        modal = PasswordSettingsModal(parent, user_id, user_email, user_name)
+        modal.exec()
+
+    def _enviar_codigo_correo(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+
+        self.generated_code = f"{random.randint(100000, 999999)}"
+        self.code_timestamp = time.time()
+
+        self.btn_send_code.setEnabled(False)
+        self.btn_send_code.setText("Enviando...")
+        self.lbl_reset_status.setText(f"Enviando código de seguridad a {self.user_email}...")
+        self.lbl_reset_status.setStyleSheet("color: #F59E0B; font-size: 10px; border: none; background: transparent;")
+
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+
+        try:
+            from database.firebase_auth import send_password_reset_code_email
+            sent = send_password_reset_code_email(self.user_email, self.user_name, self.generated_code)
+            if sent:
+                self.btn_send_code.setText("Reenviar código")
+                self.btn_send_code.setEnabled(True)
+                self.lbl_reset_status.setText(f"✓ Código enviado a {self.user_email}. Revisa tu bandeja de entrada o spam.")
+                self.lbl_reset_status.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 10.5px; font-weight: bold; border: none; background: transparent;")
+                self.ent_reset_code.setFocus()
+            else:
+                self.btn_send_code.setText("Reintentar")
+                self.btn_send_code.setEnabled(True)
+                self.lbl_reset_status.setText("⚠️ No se pudo enviar el correo vía SMTP. Verifica smtp_config.json.")
+                self.lbl_reset_status.setStyleSheet("color: #F87171; font-size: 10px; border: none; background: transparent;")
+        except Exception as e:
+            self.btn_send_code.setText("Reintentar")
+            self.btn_send_code.setEnabled(True)
+            self.lbl_reset_status.setText(f"Error al enviar: {e}")
+            self.lbl_reset_status.setStyleSheet("color: #F87171; font-size: 10px; border: none; background: transparent;")
+
+    def _verificar_codigo(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+
+        if not self.generated_code:
+            dialog = ZenitInfoDialog(self, "Código no Solicitado", "Primero debes presionar 'Enviar código' para recibir la clave por correo.")
+            dialog.exec()
+            return
+
+        if time.time() - self.code_timestamp > 900:
+            dialog = ZenitInfoDialog(self, "Código Expirado", "El código ha expirado (límite de 15 minutos). Por favor presiona 'Reenviar código'.")
+            dialog.exec()
+            return
+
+        code_input = self.ent_reset_code.text().strip()
+        if not code_input:
+            dialog = ZenitInfoDialog(self, "Código Requerido", "Por favor ingresa el código recibido en tu correo.")
+            dialog.exec()
+            return
+
+        if code_input != self.generated_code:
+            dialog = ZenitInfoDialog(self, "Código Inválido", "El código ingresado no coincide con el enviado a tu correo.")
+            dialog.exec()
+            return
+
+        # Código verificado exitosamente
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_select()
+        except Exception:
+            pass
+
+        parent = self.parent_view
+        user_id = self.user_id
+        shell = self.shell
+        self.accept()
+
+        # Abrir modal para registrar la nueva contraseña
+        new_pw_modal = SetNewPasswordModal(parent, user_id, shell)
+        new_pw_modal.exec()
+
+    def _cerrar(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+        self.reject()
+
+
+class SetNewPasswordModal(QDialog):
+    """
+    Modal minimalista y estético para agregar la nueva contraseña tras
+    haber verificado el código por correo.
+    """
+    def __init__(self, parent, user_id, shell=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setModal(True)
+        self.parent_view = parent
+        self.user_id = user_id
+        self.shell = shell or (parent.shell if hasattr(parent, 'shell') else None)
+
+        self._init_ui()
+
+    def _init_ui(self):
+        self.setFixedSize(410, 295)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        card = QFrame()
+        card.setFixedSize(410, 295)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {BG_CARD};
+                border: 1.5px solid #2E323A;
+                border-radius: 16px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(24, 20, 24, 20)
+        card_layout.setSpacing(10)
+
+        # 1. Cabecera
+        header = QHBoxLayout()
+        header.setSpacing(10)
+
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(get_icon_pixmap("lock", ACCENT_GREEN, size=20))
+        header.addWidget(icon_lbl)
+
+        title_v = QVBoxLayout()
+        title_v.setSpacing(2)
+        title_lbl = QLabel("Nueva Contraseña")
+        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 14.5px; color: {TEXT_WHITE}; font-weight: bold; border: none; background: transparent;")
+        sub_lbl = QLabel("Ingresa y confirma tu nueva clave de acceso")
+        sub_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10.5px; border: none; background: transparent;")
+        title_v.addWidget(title_lbl)
+        title_v.addWidget(sub_lbl)
+        header.addLayout(title_v)
+
+        header.addStretch()
+
+        btn_close = QPushButton("✕")
+        btn_close.setFixedSize(26, 26)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {TEXT_MUTED};
+                border: none;
+                border-radius: 13px;
+                font-size: 13px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #2E323A;
+                color: {TEXT_WHITE};
+            }}
+        """)
+        btn_close.clicked.connect(self._cerrar)
+        header.addWidget(btn_close)
+        card_layout.addLayout(header)
+
+        # 2. Campos de nueva contraseña
+        f_new, self.ent_new_pw = _build_modal_field("Nueva contraseña", is_pw=True, placeholder="Mínimo 6 caracteres")
+        f_conf, self.ent_conf_pw = _build_modal_field("Confirmar nueva contraseña", is_pw=True, placeholder="Repite tu nueva contraseña")
+
+        card_layout.addWidget(f_new)
+        card_layout.addWidget(f_conf)
+
+        # 3. Botón Guardar nueva contraseña
+        btn_save = QPushButton("Guardar nueva contraseña")
+        btn_save.setFixedHeight(35)
+        btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_GREEN};
+                color: #0B0C0E;
+                border: none;
+                border-radius: 8px;
+                font-family: '{FONT_TITLE}';
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #34D399;
+            }}
+            QPushButton:pressed {{
+                background-color: #10B981;
+            }}
+        """)
+        btn_save.clicked.connect(self._guardar_nueva_contrasena)
+        card_layout.addWidget(btn_save)
+
+        layout.addWidget(card)
+
+    def _guardar_nueva_contrasena(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+
+        new_pw = self.ent_new_pw.text().strip()
+        conf_pw = self.ent_conf_pw.text().strip()
+
+        if not new_pw or not conf_pw:
+            dialog = ZenitInfoDialog(self, "Campos Incompletos", "Por favor completa ambos campos de contraseña.")
+            dialog.exec()
+            return
+
+        if new_pw != conf_pw:
+            dialog = ZenitInfoDialog(self, "Error de Coincidencia", "Las nuevas contraseñas no coinciden.")
+            dialog.exec()
+            return
+
+        if len(new_pw) < 6:
+            dialog = ZenitInfoDialog(self, "Contraseña Muy Corta", "La nueva contraseña debe tener al menos 6 caracteres.")
+            dialog.exec()
+            return
+
+        _actualizar_password_en_sistema(self.user_id, self.shell, new_pw)
+        dialog = ZenitInfoDialog(self, "Contraseña Restablecida", "✓ Tu contraseña ha sido actualizada y guardada exitosamente.")
+        dialog.exec()
+        self.accept()
+
+    def _cerrar(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+        self.reject()
+
+
 # ── 2. VISTA PRINCIPAL DE CONFIGURACIÓN ───────────────────────────────────────
 
 class ConfiguracionView(QWidget):
@@ -322,6 +1082,9 @@ class ConfiguracionView(QWidget):
             except Exception:
                 pass
 
+        self.original_nombre = self.nombre_val
+        self.original_photo_data = self.photo_data
+
         # ── 2. Panel Horizontal de dos columnas (Todo cabe sin scroll) ────────
         body_frame = QFrame()
         body_frame.setStyleSheet("background: transparent; border: none;")
@@ -405,7 +1168,7 @@ class ConfiguracionView(QWidget):
         perfil_layout.addLayout(photo_txt_layout)
 
         # Input: Nombre Completo (Alta visibilidad y contraste)
-        self.frame_nombre = self._build_field(perfil_layout, "Nombre completo", self.nombre_val, placeholder="Tu nombre completo")
+        self.frame_nombre, self.ent_nombre = self._build_field(perfil_layout, "Nombre completo", self.nombre_val, placeholder="Tu nombre completo")
 
         # Botones de Acción
         btn_row = QHBoxLayout()
@@ -531,56 +1294,61 @@ class ConfiguracionView(QWidget):
                 lbl_goog.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px; border: none; background: transparent; font-style: italic; margin-top: 6px;")
                 cuenta_layout.addWidget(lbl_goog)
         else:
-            # Campo: Contraseña Actual (Con icono interno a la izquierda)
-            self.frame_current_pw, self.ent_current_pw = self._build_icon_field("Contraseña actual", is_pw=True, placeholder="Tu contraseña actual obligatoria", icon_name="lock")
-            cuenta_layout.addWidget(self.frame_current_pw)
+            # Tarjeta de Estado de Contraseña y Seguridad
+            sec_card = QFrame()
+            sec_card.setStyleSheet("QFrame { background-color: #22252A; border: 1px solid #2E323A; border-radius: 12px; }")
+            sec_layout = QVBoxLayout(sec_card)
+            sec_layout.setContentsMargins(16, 16, 16, 16)
+            sec_layout.setSpacing(10)
 
-            # Fila Horizontal para Nueva Contraseña y Confirmar Nueva Contraseña (Side-by-side)
-            pw_row = QHBoxLayout()
-            pw_row.setSpacing(12)
+            sec_header = QHBoxLayout()
+            sec_ic = QLabel()
+            sec_ic.setPixmap(get_icon_pixmap("lock", ACCENT_GREEN, size=18))
+            sec_title = QLabel("Contraseña de Acceso")
+            sec_title.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
+            sec_header.addWidget(sec_ic)
+            sec_header.addWidget(sec_title)
+            sec_header.addStretch()
+            sec_layout.addLayout(sec_header)
 
-            new_pw_v = QVBoxLayout()
-            new_pw_v.setContentsMargins(0, 0, 0, 0)
-            self.frame_new_pw, self.ent_new_pw = self._build_icon_field("Nueva contraseña", is_pw=True, placeholder="Dejar vacío para no cambiar")
-            new_pw_v.addWidget(self.frame_new_pw)
+            sec_desc = QLabel(
+                "Tu contraseña está protegida con encriptación segura. Puedes actualizarla o restablecerla mediante verificación por correo electrónico si la has olvidado."
+            )
+            sec_desc.setWordWrap(True)
+            sec_desc.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none; background: transparent; line-height: 16px;")
+            sec_layout.addWidget(sec_desc)
 
-            conf_pw_v = QVBoxLayout()
-            conf_pw_v.setContentsMargins(0, 0, 0, 0)
-            self.frame_conf_pw, self.ent_conf_pw = self._build_icon_field("Confirmar nueva contraseña", is_pw=True, placeholder="Repite tu nueva contraseña")
-            conf_pw_v.addWidget(self.frame_conf_pw)
-
-            pw_row.addLayout(new_pw_v, stretch=1)
-            pw_row.addLayout(conf_pw_v, stretch=1)
-            cuenta_layout.addLayout(pw_row)
-
-            # Tarjeta de Información Estilo Mockup (Subtle Green)
-            info_text = "Tu contraseña debe tener al menos 8 caracteres, incluyendo una letra mayúscula y un número para mayor seguridad en el acceso a tus datos de rendimiento."
-            cuenta_layout.addWidget(self._build_info_card(info_text))
-
-            # Botón Actualizar Contraseña
-            btn_save_c = QPushButton("Actualizar contraseña")
-            btn_save_c.setFixedHeight(34)
-            btn_save_c.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_save_c.setStyleSheet(f"""
+            btn_open_pw_modal = QPushButton("  Configurar contraseña")
+            btn_open_pw_modal.setFixedHeight(36)
+            btn_open_pw_modal.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_open_pw_modal.setIcon(get_icon("lock", "#0B0C0E", size=14))
+            btn_open_pw_modal.setIconSize(QSize(14, 14))
+            btn_open_pw_modal.setStyleSheet(f"""
                 QPushButton {{
-                    background-color: #2C2F36;
-                    color: #FFFFFF;
+                    background-color: {ACCENT_GREEN};
+                    color: #0B0C0E;
                     border: none;
                     border-radius: 8px;
                     font-family: '{FONT_TITLE}';
                     font-size: 12px;
                     font-weight: bold;
-                    padding: 0px 24px;
+                    padding: 0px 18px;
                 }}
                 QPushButton:hover {{
-                    background-color: #3E4456;
+                    background-color: #34D399;
                 }}
                 QPushButton:pressed {{
-                    background-color: #1E2127;
+                    background-color: #10B981;
                 }}
             """)
-            btn_save_c.clicked.connect(self._actualizar_contrasena)
-            cuenta_layout.addWidget(btn_save_c, alignment=Qt.AlignmentFlag.AlignLeft)
+            btn_open_pw_modal.clicked.connect(self._abrir_modal_contrasena)
+            sec_layout.addWidget(btn_open_pw_modal, alignment=Qt.AlignmentFlag.AlignLeft)
+
+            cuenta_layout.addWidget(sec_card)
+
+            # Tarjeta de recomendación de seguridad
+            info_text = "Te recomendamos utilizar contraseñas de al menos 8 caracteres con letras mayúsculas, minúsculas y números para mayor protección de tu cuenta."
+            cuenta_layout.addWidget(self._build_info_card(info_text))
 
         cuenta_layout.addStretch() # Push inputs to top inside the card
         right_layout.addWidget(cuenta_card, stretch=1) # Stretch the card to fill the column height
@@ -676,7 +1444,7 @@ class ConfiguracionView(QWidget):
         field_layout.addWidget(lbl)
         field_layout.addWidget(ent)
         parent_layout.addWidget(field_frame)
-        return field_frame
+        return field_frame, ent
 
     def _build_icon_field(self, label_text, value="", is_pw=False, disabled=False, placeholder="", icon_name=None):
         """
@@ -814,13 +1582,23 @@ class ConfiguracionView(QWidget):
                 dialog.exec()
 
     def _guardar_perfil(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
         if self.shell.controller.current_user_id == "invitado":
             dialog = ZenitInfoDialog(self, "Acceso de Invitado", "Como invitado no puedes modificar el perfil.")
             dialog.exec()
             return
-        # Para acceder al QLineEdit de self.frame_nombre, buscamos el hijo
-        ent_nombre = self.frame_nombre.findChild(QLineEdit)
-        nombre = ent_nombre.text().strip() if ent_nombre else ""
+        
+        # Acceder directamente al QLineEdit de nombre
+        if hasattr(self, 'ent_nombre') and self.ent_nombre:
+            nombre = self.ent_nombre.text().strip()
+        else:
+            ent = self.frame_nombre.findChild(QLineEdit)
+            nombre = ent.text().strip() if ent else ""
+
         if not nombre:
             dialog = ZenitInfoDialog(self, "Error", "El nombre completo no puede estar vacío.")
             dialog.exec()
@@ -851,6 +1629,8 @@ class ConfiguracionView(QWidget):
                         json.dump(profiles, f)
 
                 self.nombre_val = nombre
+                self.original_nombre = nombre
+                self.original_photo_data = self.photo_data
                 self.shell.refresh_user()
                 self.shell.controller.login_view.load_local_profiles()
                 
@@ -861,87 +1641,105 @@ class ConfiguracionView(QWidget):
                 dialog.exec()
 
     def _revertir_cambios(self):
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
         if self.shell.controller.current_user_id == "invitado":
             dialog = ZenitInfoDialog(self, "Acceso de Invitado", "Como invitado no tienes cambios que revertir.")
             dialog.exec()
             return
-        ent_nombre = self.frame_nombre.findChild(QLineEdit)
-        if ent_nombre:
-            ent_nombre.setText(self.nombre_val)
-        self.uploaded_image_b64 = None
-        
+
         uid = self.shell.controller.current_user_id
-        if uid and uid != "demo_tesis":
+        original_name = getattr(self, "original_nombre", None)
+        original_photo = getattr(self, "original_photo_data", None)
+
+        if not original_name and uid and uid != "demo_tesis":
+            try:
+                data = self.shell.controller.fb_db.read_record(f"users/{uid}")
+                if data:
+                    original_name = data.get("nombre")
+                    original_photo = data.get("imagen_data")
+                    self.photo_url = data.get("imagen_url")
+            except Exception:
+                pass
+
+        if not original_name and os.path.exists("local_profiles.json"):
+            try:
+                with open("local_profiles.json", "r") as f:
+                    profiles = json.load(f)
+                    if uid in profiles:
+                        original_name = profiles[uid].get("nombre")
+                        original_photo = profiles[uid].get("imagen_data")
+            except Exception:
+                pass
+
+        if not original_name:
+            original_name = "Usuario"
+
+        self.nombre_val = original_name
+        self.photo_data = original_photo
+        self.uploaded_image_b64 = None
+
+        # Restaurar inmediatamente el texto en el QLineEdit
+        if hasattr(self, 'ent_nombre') and self.ent_nombre:
+            self.ent_nombre.setText(self.nombre_val)
+        elif hasattr(self, 'frame_nombre') and self.frame_nombre:
+            ent = self.frame_nombre.findChild(QLineEdit)
+            if ent:
+                ent.setText(self.nombre_val)
+
+        self._load_avatar_preview()
+
+        dialog = ZenitInfoDialog(self, "Cambios Descartados", "Se han restablecido los valores originales de tu perfil.")
+        dialog.exec()
+
+    def refresh_data(self):
+        """Sincroniza y recarga los valores cuando el usuario abre la vista de configuración."""
+        uid = self.shell.controller.current_user_id
+        if uid == "invitado":
+            self.nombre_val = "Invitado"
+            self.email_val = "invitado@zenitvision.com"
+            self.photo_data = None
+        elif uid and uid != "demo_tesis":
             try:
                 data = self.shell.controller.fb_db.read_record(f"users/{uid}")
                 if data:
                     self.nombre_val = data.get("nombre", "Usuario")
+                    self.email_val = data.get("email", "correo@ejemplo.com")
                     self.photo_data = data.get("imagen_data")
                     self.photo_url = data.get("imagen_url")
             except Exception:
                 pass
-        
+
+        self.original_nombre = self.nombre_val
+        self.original_photo_data = self.photo_data
+        self.uploaded_image_b64 = None
+
+        if hasattr(self, 'ent_nombre') and self.ent_nombre:
+            self.ent_nombre.setText(self.nombre_val)
         self._load_avatar_preview()
-        
-        dialog = ZenitInfoDialog(self, "Cambios Descartados", "Se han restablecido los valores originales de tu perfil.")
-        dialog.exec()
 
-    def _actualizar_contrasena(self):
+    def _abrir_modal_contrasena(self):
+        """Abre el modal de configuración y restablecimiento de contraseña."""
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
         if self.shell.controller.current_user_id == "invitado":
-            dialog = ZenitInfoDialog(self, "Acceso de Invitado", "Como invitado no puedes modificar contraseñas.")
+            dialog = ZenitInfoDialog(self, "Acceso de Invitado", "Como invitado no tienes una contraseña registrada.")
             dialog.exec()
             return
-        current_pw = self.ent_current_pw.text().strip()
-        new_pw = self.ent_new_pw.text().strip()
-        conf_pw = self.ent_conf_pw.text().strip()
-
-        if not current_pw or not new_pw or not conf_pw:
-            dialog = ZenitInfoDialog(self, "Campos Vacíos", "Por favor, completa todos los campos de contraseña.")
-            dialog.exec()
-            return
-
-        if new_pw != conf_pw:
-            dialog = ZenitInfoDialog(self, "Error de Coincidencia", "Las nuevas contraseñas no coinciden.")
-            dialog.exec()
-            return
-
-        if len(new_pw) < 6:
-            dialog = ZenitInfoDialog(self, "Contraseña Corta", "La nueva contraseña debe tener al menos 6 caracteres.")
-            dialog.exec()
-            return
-
-        uid = self.shell.controller.current_user_id
-        if uid:
-            try:
-                user_data = self.shell.controller.fb_db.read_record(f"users/{uid}")
-                if not user_data:
-                    dialog = ZenitInfoDialog(self, "Error", "No se encontró información del usuario.")
-                    dialog.exec()
-                    return
-
-                stored_hash = user_data.get("password")
-                if not stored_hash:
-                    dialog = ZenitInfoDialog(self, "Error", "Esta cuenta no utiliza contraseña (Google Auth).")
-                    dialog.exec()
-                    return
-
-                # Validar contraseña actual con bcrypt
-                if bcrypt.checkpw(current_pw.encode('utf-8'), stored_hash.encode('utf-8')):
-                    hashed = bcrypt.hashpw(new_pw.encode('utf-8'), bcrypt.gensalt()).decode()
-                    self.shell.controller.fb_db.update_record(f"users/{uid}", {"password": hashed})
-                    
-                    self.ent_current_pw.clear()
-                    self.ent_new_pw.clear()
-                    self.ent_conf_pw.clear()
-
-                    dialog = ZenitInfoDialog(self, "Contraseña Cambiada", "✓ Tu contraseña ha sido actualizada con éxito.")
-                    dialog.exec()
-                else:
-                    dialog = ZenitInfoDialog(self, "Validación Fallida", "La contraseña actual ingresada es incorrecta.")
-                    dialog.exec()
-            except Exception as e:
-                dialog = ZenitInfoDialog(self, "Error Técnico", f"No se pudo cambiar la contraseña: {e}")
-                dialog.exec()
+        
+        modal = PasswordSettingsModal(
+            self,
+            user_id=self.shell.controller.current_user_id,
+            user_email=self.email_val,
+            user_name=self.nombre_val
+        )
+        modal.exec()
 
     def _eliminar_cuenta(self):
         if self.shell.controller.current_user_id == "invitado":

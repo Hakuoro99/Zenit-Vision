@@ -309,3 +309,167 @@ def delete_user_by_email(email: str) -> None:
         print(f"[Auth] Usuario {email} ({user.uid}) eliminado de Firebase Auth.")
     except Exception as e:
         print(f"[Auth] Error al eliminar usuario por email de Firebase Auth: {e}")
+
+
+def send_password_reset_code_email(email: str, name: str, code: str) -> bool:
+    """
+    Envía un correo personalizado con diseño cyberpunk esmeralda que contiene el
+    código de 6 dígitos para restablecer la contraseña en la aplicación.
+    """
+    import os
+    import json
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.header import Header
+
+    # 1. Intentar generar link opcional de Firebase si la cuenta existe en Auth
+    link = ""
+    try:
+        fb_auth = _get_auth()
+        link = fb_auth.generate_password_reset_link(email)
+    except Exception:
+        pass
+
+    config_path = "smtp_config.json"
+    if not os.path.exists(config_path):
+        return False
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        smtp_server = config.get("smtp_server", "smtp.gmail.com")
+        smtp_port = config.get("smtp_port", 587)
+        sender_email = config.get("sender_email")
+        sender_password = config.get("sender_password")
+
+        if not sender_email or not sender_password or "tu_app_password" in sender_password:
+            return False
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = Header("Código de restablecimiento de contraseña — Zenit-Visión", "utf-8")
+        msg["From"] = f"Zenit-Vision <{sender_email}>"
+        msg["To"] = email
+
+        link_button_html = ""
+        if link:
+            link_button_html = f"""
+            <div style="text-align: center; margin-top: 15px;">
+                <p style="font-size: 11px; color: #8A8E98; margin-bottom: 8px;">O si prefieres, puedes usar este enlace directo:</p>
+                <a href="{link}" style="background-color: #1F2228; border: 1px solid #2E323A; color: #10B981; text-decoration: none; font-size: 11px; font-weight: bold; padding: 6px 16px; border-radius: 6px; display: inline-block;">Abrir enlace en navegador</a>
+            </div>
+            """
+
+        html = f"""
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{
+                    background-color: #08090C;
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    color: #C5C7CA;
+                    margin: 0;
+                    padding: 0;
+                }}
+                .container {{
+                    max-width: 500px;
+                    margin: 30px auto;
+                    background-color: #0F1115;
+                    border: 1px solid #262A34;
+                    border-radius: 12px;
+                    padding: 30px;
+                }}
+                .header {{
+                    text-align: center;
+                    margin-bottom: 25px;
+                    border-bottom: 1px solid #262A34;
+                    padding-bottom: 15px;
+                }}
+                .logo {{
+                    font-size: 24px;
+                    font-weight: 800;
+                    color: #FFFFFF;
+                    letter-spacing: 1px;
+                }}
+                .accent {{
+                    color: #10B981;
+                }}
+                .title {{
+                    font-size: 18px;
+                    color: #FFFFFF;
+                    margin-bottom: 15px;
+                    font-weight: bold;
+                    text-align: center;
+                }}
+                .text {{
+                    font-size: 13px;
+                    line-height: 1.5;
+                    color: #C5C7CA;
+                    text-align: center;
+                }}
+                .code-box {{
+                    text-align: center;
+                    margin: 25px 0;
+                }}
+                .code {{
+                    font-size: 32px;
+                    font-weight: 800;
+                    letter-spacing: 8px;
+                    color: #10B981;
+                    background-color: #08090C;
+                    padding: 12px 28px;
+                    border: 1.5px solid #10B981;
+                    border-radius: 8px;
+                    display: inline-block;
+                }}
+                .footer {{
+                    text-align: center;
+                    font-size: 10px;
+                    color: #8A8E98;
+                    border-top: 1px solid #262A34;
+                    padding-top: 15px;
+                    margin-top: 25px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 8px;">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <div class="logo">ZENIT <span class="accent">VISION</span></div>
+                </div>
+                <div class="title">Restablecer tu Contraseña</div>
+                <p class="text">
+                    Hola <strong>{name}</strong>, hemos recibido una solicitud para cambiar la contraseña de tu cuenta.
+                </p>
+                <p class="text">
+                    Introduce el siguiente código de seguridad en la aplicación para crear tu nueva clave:
+                </p>
+                <div class="code-box">
+                    <div class="code">{code}</div>
+                </div>
+                {link_button_html}
+                <div class="footer">
+                    Este código es válido durante los próximos 15 minutos.<br>
+                    Si no solicitaste este cambio, puedes ignorar este mensaje; tu cuenta sigue segura.
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"[SMTP Password Reset] Error enviando correo: {e}")
+        return False
