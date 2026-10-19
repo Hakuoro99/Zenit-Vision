@@ -80,19 +80,21 @@ def get_circular_avatar(size, initials, palette_idx, photo_data=None, photo_url=
 
 # ── Diálogo Modal de Validación de Contraseña ──────────────────────────────────
 class PasswordDialog(QDialog):
-    def __init__(self, parent_view, user_id, user_name, stored_hash):
+    def __init__(self, parent_view, user_id, user_name, stored_hash, user_email=None):
         super().__init__(parent_view)
         self.parent_view = parent_view
         self.user_id = user_id
+        self.user_name = user_name or "Usuario"
+        self.user_email = user_email or ""
         self.stored_hash = stored_hash
         self.success = False
 
         self.setWindowTitle("Seguridad Zenit")
-        self.setFixedSize(380, 270)
+        self.setFixedSize(380, 300)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-        self._init_ui(user_name)
+        self._init_ui(self.user_name)
 
     def _init_ui(self, user_name):
         layout = QVBoxLayout(self)
@@ -123,7 +125,22 @@ class PasswordDialog(QDialog):
         self.entry_pw = QLineEdit()
         self.entry_pw.setEchoMode(QLineEdit.EchoMode.Password)
         self.entry_pw.setPlaceholderText("Tu contraseña")
-        self.entry_pw.setPlaceholderText("Tu contraseña")
+        self.entry_pw.returnPressed.connect(self._verify_password)
+
+        # Icono de ojo interactivo
+        eye_icon = get_icon("eye", TEXT_MUTED, size=16)
+        action_eye = self.entry_pw.addAction(eye_icon, QLineEdit.ActionPosition.TrailingPosition)
+        action_eye.setData(self.entry_pw)
+
+        def _toggle_pw():
+            if self.entry_pw.echoMode() == QLineEdit.EchoMode.Password:
+                self.entry_pw.setEchoMode(QLineEdit.EchoMode.Normal)
+                action_eye.setIcon(get_icon("eye", ACCENT_GREEN, size=16))
+            else:
+                self.entry_pw.setEchoMode(QLineEdit.EchoMode.Password)
+                action_eye.setIcon(get_icon("eye", TEXT_MUTED, size=16))
+
+        action_eye.triggered.connect(_toggle_pw)
 
         # Etiqueta de error
         self.err_lbl = QLabel("")
@@ -144,18 +161,72 @@ class PasswordDialog(QDialog):
         btn_entrar.setFixedHeight(34)
         btn_entrar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_entrar.setProperty("class", "PrimaryButton")
+        btn_entrar.setDefault(True)
+        btn_entrar.setAutoDefault(True)
         btn_entrar.clicked.connect(self._verify_password)
 
         btn_layout.addWidget(btn_cancel)
         btn_layout.addWidget(btn_entrar)
+
+        # Enlace de restablecimiento
+        btn_forgot = QPushButton("¿Olvidaste tu contraseña? Restablecer")
+        btn_forgot.setFixedHeight(22)
+        btn_forgot.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_forgot.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {TEXT_MUTED};
+                border: none;
+                font-size: 11px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                color: {ACCENT_GREEN};
+                text-decoration: underline;
+            }}
+        """)
+        btn_forgot.clicked.connect(self._forgot_password)
 
         card_layout.addWidget(title)
         card_layout.addWidget(subtitle)
         card_layout.addWidget(self.entry_pw)
         card_layout.addWidget(self.err_lbl)
         card_layout.addLayout(btn_layout)
+        card_layout.addWidget(btn_forgot)
 
         layout.addWidget(card)
+
+    def _forgot_password(self):
+        if not self.user_email:
+            self.err_lbl.setText("No hay correo registrado para restablecer")
+            return
+
+        self.reject()
+
+        from ui.views.configuracion_view import PasswordResetCodeModal
+
+        class _ShellProxy:
+            def __init__(self, controller):
+                self.controller = controller
+
+        shell = _ShellProxy(self.parent_view.controller)
+        modal = PasswordResetCodeModal(
+            self.parent_view,
+            self.user_id,
+            self.user_email,
+            self.user_name,
+            shell,
+            from_login=True,
+        )
+        modal.exec()
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._verify_password()
+        elif event.key() == Qt.Key.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(event)
 
     def _verify_password(self):
         pw_input = self.entry_pw.text().strip()
@@ -164,7 +235,26 @@ class PasswordDialog(QDialog):
             return
         
         try:
-            # Validar usando bcrypt
+            # Obtener siempre el hash más fresco desde local_profiles.json o RTDB
+            latest_hash = self.stored_hash
+            if os.path.exists("local_profiles.json"):
+                try:
+                    with open("local_profiles.json", "r") as f:
+                        profs = json.load(f)
+                    if self.user_id in profs and profs[self.user_id].get("password"):
+                        latest_hash = profs[self.user_id].get("password")
+                except Exception:
+                    pass
+
+            if hasattr(self.parent_view, 'controller') and self.parent_view.controller and hasattr(self.parent_view.controller, 'fb_db') and self.parent_view.controller.fb_db:
+                try:
+                    cloud_data = self.parent_view.controller.fb_db.read_record(f"users/{self.user_id}")
+                    if cloud_data and cloud_data.get("password"):
+                        latest_hash = cloud_data.get("password")
+                except Exception:
+                    pass
+
+            self.stored_hash = latest_hash
             stored_bytes = self.stored_hash.encode('utf-8')
             if bcrypt.checkpw(pw_input.encode('utf-8'), stored_bytes):
                 self.success = True
@@ -531,7 +621,7 @@ class LoginView(QWidget):
                 border: 2px solid {ACCENT_GREEN};
             }}
         """)
-        btn.clicked.connect(lambda: self._access_profile(user_id, remember, data))
+        btn.clicked.connect(lambda checked=False, u=user_id, r=remember: self._access_profile(u, r))
 
         # Nombre del perfil
         lbl = QLabel(nombre[:12])
@@ -543,20 +633,51 @@ class LoginView(QWidget):
 
         self.grid_layout.addWidget(profile_frame, row, col, alignment=Qt.AlignmentFlag.AlignCenter)
 
-    def _access_profile(self, user_id, remember, data):
+    def _access_profile(self, user_id, remember=False, data=None):
+        # Recargar siempre los datos más actualizados del perfil local o nube
+        current_data = dict(data) if data else {}
+        if os.path.exists(self.local_users_file):
+            try:
+                with open(self.local_users_file, "r") as f:
+                    profs = json.load(f)
+                if user_id in profs:
+                    current_data.update(profs[user_id])
+                    remember = profs[user_id].get("remember", remember)
+            except Exception:
+                pass
+
+        if hasattr(self, 'controller') and self.controller and hasattr(self.controller, 'fb_db') and self.controller.fb_db:
+            try:
+                cloud_u = self.controller.fb_db.read_record(f"users/{user_id}")
+                if cloud_u:
+                    current_data.update(cloud_u)
+            except Exception:
+                pass
+
         # Si es login con Google o tiene recordar sesión activado, entra directo
-        if data.get("auth_provider") == "google" or remember:
+        if current_data.get("auth_provider") == "google" or remember:
             self.controller.login_success(user_id)
             return
 
         # Si no, solicita contraseña en un diálogo modal estilizado
-        stored_hash = data.get("password")
+        stored_hash = current_data.get("password")
         if not stored_hash:
             return
 
-        dlg = PasswordDialog(self, user_id, data.get("nombre", "Usuario"), stored_hash)
+        dlg = PasswordDialog(
+            self,
+            user_id,
+            current_data.get("nombre", "Usuario"),
+            stored_hash,
+            user_email=current_data.get("email"),
+        )
         if dlg.exec() == QDialog.DialogCode.Accepted and dlg.success:
             self.controller.login_success(user_id)
+
+    def open_password_dialog_for_user(self, user_id):
+        """Abre directamente el diálogo de contraseña para un usuario específico con datos frescos."""
+        self.load_local_profiles()
+        self._access_profile(user_id, False, None)
 
     def _login_as_guest(self):
         modal = GuestWarningModal(self)

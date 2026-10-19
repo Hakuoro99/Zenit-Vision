@@ -412,7 +412,7 @@ class MainWindow(QMainWindow):
         self.shell = AppShell(self)
         self.central_stack.addWidget(self.shell)
 
-        # Iniciar mostrando el login
+        # Iniciar mostrando el login (también arranca la música ambiental)
         self.show_login()
 
     def show_login(self):
@@ -426,6 +426,11 @@ class MainWindow(QMainWindow):
                 if hasattr(self.login_view, 'load_local_profiles'):
                     self.login_view.load_local_profiles()
             self.central_stack.setCurrentWidget(self.login_view)
+            try:
+                from core.audio_manager import AudioManager
+                AudioManager.instance().start_background_music()
+            except Exception as e:
+                print(f"[MainWindow] No se pudo iniciar música de fondo: {e}")
         except ImportError:
             print("[Zenit-Vision] LoginView aún no implementado en ui/views/")
 

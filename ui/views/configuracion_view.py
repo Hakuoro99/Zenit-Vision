@@ -5,7 +5,8 @@ import time
 import random
 import bcrypt
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QLineEdit, QPushButton, QFileDialog, QDialog, QStackedWidget
+    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QLineEdit, QPushButton,
+    QFileDialog, QDialog, QStackedWidget, QCheckBox
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QPixmap
@@ -78,7 +79,11 @@ class ZenitInfoDialog(QDialog):
             from core.audio_manager import AudioManager
             AudioManager.instance().play_click()
             self.accept()
+        self._on_ok = _on_ok
         btn_ok.clicked.connect(_on_ok)
+        btn_ok.setDefault(True)
+        btn_ok.setAutoDefault(True)
+        btn_ok.setFocus()
         
         card_layout.addWidget(lbl_title)
         card_layout.addWidget(lbl_msg)
@@ -86,6 +91,17 @@ class ZenitInfoDialog(QDialog):
         card_layout.addWidget(btn_ok)
         
         layout.addWidget(card)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if hasattr(self, '_on_ok'):
+                self._on_ok()
+            else:
+                self.accept()
+        elif event.key() == Qt.Key.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(event)
 
 
 class ZenitConfirmDialog(QDialog):
@@ -228,7 +244,8 @@ def _actualizar_password_en_sistema(user_id, shell, new_password):
     Sincroniza la nueva contraseña de forma segura en:
     1. Firebase Realtime Database (con hash bcrypt)
     2. local_profiles.json (con hash bcrypt)
-    3. Firebase Authentication (directamente con el cliente de auth)
+    3. Notifica a login_view para refrescar sus perfiles en memoria
+    4. Firebase Authentication (directamente con el cliente de auth)
     """
     hashed = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode()
 
@@ -247,15 +264,48 @@ def _actualizar_password_en_sistema(user_id, shell, new_password):
             if user_id in profs:
                 profs[user_id]["password"] = hashed
                 with open("local_profiles.json", "w") as f:
-                    json.dump(profs, f)
+                    json.dump(profs, f, indent=4)
         except Exception as e:
             print(f"[PasswordSync] Error actualizando local_profiles: {e}")
 
-    # 3. Actualizar en Firebase Auth si la cuenta existe
+    # 3. Recargar inmediatamente los perfiles en LoginView si está disponible
+    controller = getattr(shell, 'controller', None) or shell
+    if controller and hasattr(controller, 'login_view') and controller.login_view:
+        try:
+            controller.login_view.load_local_profiles()
+        except Exception as e:
+            print(f"[PasswordSync] Error recargando login_view: {e}")
+
+    # 4. Actualizar en Firebase Auth si la cuenta existe
     try:
         from database import firebase_auth as fb_auth
         auth_client = fb_auth._get_auth()
-        auth_client.update_user(user_id, password=new_password)
+        try:
+            auth_client.update_user(user_id, password=new_password)
+        except Exception:
+            # Si el user_id local no coincide con el UID de Firebase Auth, buscar por email
+            user_email = None
+            if os.path.exists("local_profiles.json"):
+                try:
+                    with open("local_profiles.json", "r") as f:
+                        profs = json.load(f)
+                        user_email = profs.get(user_id, {}).get("email")
+                except Exception:
+                    pass
+            if not user_email and shell and hasattr(shell, 'controller') and shell.controller.fb_db:
+                try:
+                    u_data = shell.controller.fb_db.read_record(f"users/{user_id}")
+                    if u_data:
+                        user_email = u_data.get("email")
+                except Exception:
+                    pass
+            if user_email:
+                try:
+                    fb_user = auth_client.get_user_by_email(user_email)
+                    if fb_user:
+                        auth_client.update_user(fb_user.uid, password=new_password)
+                except Exception:
+                    pass
     except Exception as e:
         print(f"[PasswordSync] Error actualizando Firebase Auth: {e}")
 
@@ -272,6 +322,19 @@ def _build_modal_field(label_text, is_pw=False, placeholder=""):
     ent.setPlaceholderText(placeholder)
     if is_pw:
         ent.setEchoMode(QLineEdit.EchoMode.Password)
+        eye_icon = get_icon("eye", TEXT_MUTED, size=16)
+        action = ent.addAction(eye_icon, QLineEdit.ActionPosition.TrailingPosition)
+        action.setData(ent)
+
+        def _toggle_visibility():
+            if ent.echoMode() == QLineEdit.EchoMode.Password:
+                ent.setEchoMode(QLineEdit.EchoMode.Normal)
+                action.setIcon(get_icon("eye", ACCENT_GREEN, size=16))
+            else:
+                ent.setEchoMode(QLineEdit.EchoMode.Password)
+                action.setIcon(get_icon("eye", TEXT_MUTED, size=16))
+
+        action.triggered.connect(_toggle_visibility)
     ent.setFixedHeight(34)
     ent.setStyleSheet(f"""
         QLineEdit {{
@@ -375,17 +438,23 @@ class PasswordSettingsModal(QDialog):
 
         # 2. Campos de contraseña
         f_cur, self.ent_cur_pw = _build_modal_field("Contraseña actual", is_pw=True, placeholder="Tu contraseña actual obligatoria")
-        f_new, self.ent_new_pw = _build_modal_field("Nueva contraseña", is_pw=True, placeholder="Mínimo 6 caracteres")
+        f_new, self.ent_new_pw = _build_modal_field("Nueva contraseña", is_pw=True, placeholder="Mínimo 8 caracteres")
         f_conf, self.ent_conf_pw = _build_modal_field("Confirmar nueva contraseña", is_pw=True, placeholder="Repite tu nueva contraseña")
 
         card_layout.addWidget(f_cur)
         card_layout.addWidget(f_new)
         card_layout.addWidget(f_conf)
 
+        # Enter navega entre campos y guarda
+        self.ent_cur_pw.returnPressed.connect(self.ent_new_pw.setFocus)
+        self.ent_new_pw.returnPressed.connect(self.ent_conf_pw.setFocus)
+        self.ent_conf_pw.returnPressed.connect(self._cambiar_con_actual)
+
         # 3. Botón Guardar nueva contraseña
         btn_save = QPushButton("Guardar nueva contraseña")
         btn_save.setFixedHeight(35)
         btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.setDefault(True)
         btn_save.setStyleSheet(f"""
             QPushButton {{
                 background-color: {ACCENT_GREEN};
@@ -467,8 +536,8 @@ class PasswordSettingsModal(QDialog):
             dialog.exec()
             return
 
-        if len(new_pw) < 6:
-            dialog = ZenitInfoDialog(self, "Contraseña Muy Corta", "La nueva contraseña debe tener al menos 6 caracteres.")
+        if len(new_pw) < 8:
+            dialog = ZenitInfoDialog(self, "Contraseña Muy Corta", "La nueva contraseña debe tener al menos 8 caracteres.")
             dialog.exec()
             return
 
@@ -521,7 +590,7 @@ class PasswordResetCodeModal(QDialog):
     Muestra la fila del correo, el campo 'CÓDIGO' limpio y el botón 'Verificar código'.
     Al verificarse exitosamente, abre el modal de 'Nueva Contraseña'.
     """
-    def __init__(self, parent, user_id, user_email, user_name, shell=None):
+    def __init__(self, parent, user_id, user_email, user_name, shell=None, from_login=False):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -531,6 +600,7 @@ class PasswordResetCodeModal(QDialog):
         self.user_email = user_email or "correo@ejemplo.com"
         self.user_name = user_name or "Usuario"
         self.shell = shell or (parent.shell if hasattr(parent, 'shell') else None)
+        self.from_login = from_login
 
         self.generated_code = None
         self.code_timestamp = 0
@@ -538,12 +608,13 @@ class PasswordResetCodeModal(QDialog):
         self._init_ui()
 
     def _init_ui(self):
-        self.setFixedSize(410, 315)
+        modal_h = 290 if self.from_login else 315
+        self.setFixedSize(410, modal_h)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         card = QFrame()
-        card.setFixedSize(410, 315)
+        card.setFixedSize(410, modal_h)
         card.setStyleSheet(f"""
             QFrame {{
                 background-color: {BG_CARD};
@@ -676,10 +747,14 @@ class PasswordResetCodeModal(QDialog):
         cb_layout.addWidget(self.ent_reset_code)
         card_layout.addWidget(code_box)
 
+        # Enter en código verifica de inmediato
+        self.ent_reset_code.returnPressed.connect(self._verificar_codigo)
+
         # 4. Botón Verificar código
         btn_verify = QPushButton("Verificar código")
         btn_verify.setFixedHeight(35)
         btn_verify.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_verify.setDefault(True)
         btn_verify.setStyleSheet(f"""
             QPushButton {{
                 background-color: {ACCENT_GREEN};
@@ -700,26 +775,27 @@ class PasswordResetCodeModal(QDialog):
         btn_verify.clicked.connect(self._verificar_codigo)
         card_layout.addWidget(btn_verify)
 
-        # 5. Volver a cambiar con contraseña actual
-        btn_back = QPushButton("← Volver a cambiar con contraseña actual")
-        btn_back.setFixedHeight(22)
-        btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_back.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {TEXT_MUTED};
-                border: none;
-                font-size: 11px;
-                font-weight: 500;
-                text-align: center;
-                padding-top: 2px;
-            }}
-            QPushButton:hover {{
-                color: {TEXT_WHITE};
-            }}
-        """)
-        btn_back.clicked.connect(self._volver_a_cambio)
-        card_layout.addWidget(btn_back)
+        # 5. Volver (solo en flujo de configuración; desde login no aplica)
+        if not self.from_login:
+            btn_back = QPushButton("← Volver a cambiar con contraseña actual")
+            btn_back.setFixedHeight(22)
+            btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_back.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: transparent;
+                    color: {TEXT_MUTED};
+                    border: none;
+                    font-size: 11px;
+                    font-weight: 500;
+                    text-align: center;
+                    padding-top: 2px;
+                }}
+                QPushButton:hover {{
+                    color: {TEXT_WHITE};
+                }}
+            """)
+            btn_back.clicked.connect(self._volver_a_cambio)
+            card_layout.addWidget(btn_back)
 
         layout.addWidget(card)
 
@@ -733,7 +809,6 @@ class PasswordResetCodeModal(QDialog):
         user_id = self.user_id
         user_email = self.user_email
         user_name = self.user_name
-        shell = self.shell
         self.reject()
 
         modal = PasswordSettingsModal(parent, user_id, user_email, user_name)
@@ -815,10 +890,11 @@ class PasswordResetCodeModal(QDialog):
         parent = self.parent_view
         user_id = self.user_id
         shell = self.shell
+        from_login = self.from_login
         self.accept()
 
         # Abrir modal para registrar la nueva contraseña
-        new_pw_modal = SetNewPasswordModal(parent, user_id, shell)
+        new_pw_modal = SetNewPasswordModal(parent, user_id, shell, from_login=from_login)
         new_pw_modal.exec()
 
     def _cerrar(self):
@@ -835,7 +911,7 @@ class SetNewPasswordModal(QDialog):
     Modal minimalista y estético para agregar la nueva contraseña tras
     haber verificado el código por correo.
     """
-    def __init__(self, parent, user_id, shell=None):
+    def __init__(self, parent, user_id, shell=None, from_login=False):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -843,6 +919,7 @@ class SetNewPasswordModal(QDialog):
         self.parent_view = parent
         self.user_id = user_id
         self.shell = shell or (parent.shell if hasattr(parent, 'shell') else None)
+        self.from_login = from_login
 
         self._init_ui()
 
@@ -906,16 +983,21 @@ class SetNewPasswordModal(QDialog):
         card_layout.addLayout(header)
 
         # 2. Campos de nueva contraseña
-        f_new, self.ent_new_pw = _build_modal_field("Nueva contraseña", is_pw=True, placeholder="Mínimo 6 caracteres")
+        f_new, self.ent_new_pw = _build_modal_field("Nueva contraseña", is_pw=True, placeholder="Mínimo 8 caracteres")
         f_conf, self.ent_conf_pw = _build_modal_field("Confirmar nueva contraseña", is_pw=True, placeholder="Repite tu nueva contraseña")
 
         card_layout.addWidget(f_new)
         card_layout.addWidget(f_conf)
 
+        # Enter navega entre campos y guarda
+        self.ent_new_pw.returnPressed.connect(self.ent_conf_pw.setFocus)
+        self.ent_conf_pw.returnPressed.connect(self._guardar_nueva_contrasena)
+
         # 3. Botón Guardar nueva contraseña
         btn_save = QPushButton("Guardar nueva contraseña")
         btn_save.setFixedHeight(35)
         btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.setDefault(True)
         btn_save.setStyleSheet(f"""
             QPushButton {{
                 background-color: {ACCENT_GREEN};
@@ -958,8 +1040,8 @@ class SetNewPasswordModal(QDialog):
             dialog.exec()
             return
 
-        if len(new_pw) < 6:
-            dialog = ZenitInfoDialog(self, "Contraseña Muy Corta", "La nueva contraseña debe tener al menos 6 caracteres.")
+        if len(new_pw) < 8:
+            dialog = ZenitInfoDialog(self, "Contraseña Muy Corta", "La nueva contraseña debe tener al menos 8 caracteres.")
             dialog.exec()
             return
 
@@ -967,6 +1049,29 @@ class SetNewPasswordModal(QDialog):
         dialog = ZenitInfoDialog(self, "Contraseña Restablecida", "✓ Tu contraseña ha sido actualizada y guardada exitosamente.")
         dialog.exec()
         self.accept()
+
+        # Al dar OK en el modal de éxito, redirigir al modal de contraseña para ingresar la nueva contraseña
+        parent = self.parent_view
+        user_id = self.user_id
+        shell = self.shell
+        from_login = self.from_login
+
+        from PyQt6.QtCore import QTimer
+        def _redirect_to_password_modal():
+            login_view = None
+            if hasattr(parent, 'open_password_dialog_for_user'):
+                login_view = parent
+            elif shell and hasattr(shell, 'controller') and hasattr(shell.controller, 'login_view'):
+                login_view = shell.controller.login_view
+            elif shell and hasattr(shell, 'login_view'):
+                login_view = shell.login_view
+
+            if login_view and hasattr(login_view, 'open_password_dialog_for_user'):
+                login_view.open_password_dialog_for_user(user_id)
+            elif not from_login and hasattr(parent, '_abrir_modal_contrasena'):
+                parent._abrir_modal_contrasena()
+
+        QTimer.singleShot(150, _redirect_to_password_modal)
 
     def _cerrar(self):
         try:
@@ -1020,25 +1125,6 @@ class ConfiguracionView(QWidget):
         actions_layout = QHBoxLayout(actions_container)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(10)
-
-        # Campo de Búsqueda
-        search_input = QLineEdit()
-        search_input.setPlaceholderText("Buscar ajustes...")
-        search_input.setFixedSize(180, 28)
-        search_input.setStyleSheet(f"""
-            QLineEdit {{
-                background-color: {BG_INPUT};
-                border: 1px solid {BORDER_DARK};
-                border-radius: 14px;
-                color: {TEXT_WHITE};
-                font-size: 11px;
-                padding: 4px 10px 4px 12px;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid {ACCENT_GREEN};
-            }}
-        """)
-        actions_layout.addWidget(search_input)
 
         # Iconos de Notificaciones y Calendario
         btn_bell = QPushButton()
@@ -1169,11 +1255,10 @@ class ConfiguracionView(QWidget):
 
         # Input: Nombre Completo (Alta visibilidad y contraste)
         self.frame_nombre, self.ent_nombre = self._build_field(perfil_layout, "Nombre completo", self.nombre_val, placeholder="Tu nombre completo")
+        if self.ent_nombre:
+            self.ent_nombre.returnPressed.connect(self._guardar_perfil)
 
-        # Botones de Acción
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(10)
-        
+        # Botón de Acción
         btn_save_p = QPushButton("Guardar cambios")
         btn_save_p.setFixedHeight(34)
         btn_save_p.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1195,33 +1280,7 @@ class ConfiguracionView(QWidget):
             }}
         """)
         btn_save_p.clicked.connect(self._guardar_perfil)
-
-        btn_cancel = QPushButton("Descartar")
-        btn_cancel.setFixedHeight(34)
-        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_cancel.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: #FFFFFF;
-                border: 1px solid #2E323A;
-                border-radius: 8px;
-                font-family: '{FONT_TITLE}';
-                font-size: 12px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: #25282E;
-                border: 1px solid #3E4456;
-            }}
-            QPushButton:pressed {{
-                background-color: #1C1E22;
-            }}
-        """)
-        btn_cancel.clicked.connect(self._revertir_cambios)
-
-        btn_row.addWidget(btn_save_p, stretch=1)
-        btn_row.addWidget(btn_cancel, stretch=1)
-        perfil_layout.addLayout(btn_row)
+        perfil_layout.addWidget(btn_save_p)
 
         left_layout.addWidget(perfil_card)
 
@@ -1294,6 +1353,60 @@ class ConfiguracionView(QWidget):
                 lbl_goog.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px; border: none; background: transparent; font-style: italic; margin-top: 6px;")
                 cuenta_layout.addWidget(lbl_goog)
         else:
+            # Preferencia de sesión
+            session_card = QFrame()
+            session_card.setStyleSheet("QFrame { background-color: #22252A; border: 1px solid #2E323A; border-radius: 12px; }")
+            session_layout = QVBoxLayout(session_card)
+            session_layout.setContentsMargins(16, 16, 16, 16)
+            session_layout.setSpacing(10)
+
+            session_header = QHBoxLayout()
+            session_ic = QLabel()
+            session_ic.setPixmap(get_icon_pixmap("shield", ACCENT_GREEN, size=18))
+            session_title = QLabel("Sesión de acceso")
+            session_title.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
+            session_header.addWidget(session_ic)
+            session_header.addWidget(session_title)
+            session_header.addStretch()
+            session_layout.addLayout(session_header)
+
+            session_desc = QLabel(
+                "Si está activado, podrás entrar a tu perfil sin volver a escribir la contraseña. "
+                "Si lo desactivas, se pedirá la contraseña cada vez que inicies sesión."
+            )
+            session_desc.setWordWrap(True)
+            session_desc.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none; background: transparent; line-height: 16px;")
+            session_layout.addWidget(session_desc)
+
+            self.chk_remember = QCheckBox("Mantener sesión abierta")
+            self.chk_remember.setChecked(self._load_remember_preference())
+            self.chk_remember.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.chk_remember.setStyleSheet(f"""
+                QCheckBox {{
+                    color: {TEXT_WHITE};
+                    font-size: 12px;
+                    font-weight: bold;
+                    border: none;
+                    background: transparent;
+                    spacing: 8px;
+                }}
+                QCheckBox::indicator {{
+                    width: 16px;
+                    height: 16px;
+                    border: 1px solid {BORDER_DARK};
+                    border-radius: 4px;
+                    background-color: {BG_MAIN};
+                }}
+                QCheckBox::indicator:checked {{
+                    border: 1px solid {ACCENT_GREEN};
+                    background-color: {ACCENT_GREEN};
+                }}
+            """)
+            self.chk_remember.toggled.connect(self._guardar_preferencia_sesion)
+            session_layout.addWidget(self.chk_remember)
+
+            cuenta_layout.addWidget(session_card)
+
             # Tarjeta de Estado de Contraseña y Seguridad
             sec_card = QFrame()
             sec_card.setStyleSheet("QFrame { background-color: #22252A; border: 1px solid #2E323A; border-radius: 12px; }")
@@ -1349,6 +1462,67 @@ class ConfiguracionView(QWidget):
             # Tarjeta de recomendación de seguridad
             info_text = "Te recomendamos utilizar contraseñas de al menos 8 caracteres con letras mayúsculas, minúsculas y números para mayor protección de tu cuenta."
             cuenta_layout.addWidget(self._build_info_card(info_text))
+
+        # Preferencia de música (disponible para todos los perfiles)
+        music_card = QFrame()
+        music_card.setStyleSheet("QFrame { background-color: #22252A; border: 1px solid #2E323A; border-radius: 12px; }")
+        music_layout = QVBoxLayout(music_card)
+        music_layout.setContentsMargins(16, 16, 16, 16)
+        music_layout.setSpacing(10)
+
+        music_header = QHBoxLayout()
+        music_ic = QLabel()
+        music_ic.setPixmap(get_icon_pixmap("volume", ACCENT_GREEN, size=18))
+        music_title = QLabel("Música")
+        music_title.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 13px; font-weight: bold; border: none; background: transparent;")
+        music_header.addWidget(music_ic)
+        music_header.addWidget(music_title)
+        music_header.addStretch()
+        music_layout.addLayout(music_header)
+
+        music_desc = QLabel(
+            "Música ambiental mientras usas la app y música motivacional durante tus entrenamientos. "
+            "Las pistas se reproducen de forma aleatoria y continua."
+        )
+        music_desc.setWordWrap(True)
+        music_desc.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none; background: transparent; line-height: 16px;")
+        music_layout.addWidget(music_desc)
+
+        music_enabled = True
+        try:
+            from core.audio_manager import AudioManager
+            music_enabled = AudioManager.instance().music_enabled
+        except Exception:
+            pass
+
+        self.chk_music = QCheckBox("Activar música")
+        self.chk_music.setChecked(music_enabled)
+        self.chk_music.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.chk_music.setStyleSheet(f"""
+            QCheckBox {{
+                color: {TEXT_WHITE};
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 16px;
+                height: 16px;
+                border: 1px solid {BORDER_DARK};
+                border-radius: 4px;
+                background-color: {BG_MAIN};
+            }}
+            QCheckBox::indicator:checked {{
+                border: 1px solid {ACCENT_GREEN};
+                background-color: {ACCENT_GREEN};
+            }}
+        """)
+        self.chk_music.toggled.connect(self._guardar_preferencia_musica)
+        music_layout.addWidget(self.chk_music)
+
+        cuenta_layout.addWidget(music_card)
 
         cuenta_layout.addStretch() # Push inputs to top inside the card
         right_layout.addWidget(cuenta_card, stretch=1) # Stretch the card to fill the column height
@@ -1415,6 +1589,19 @@ class ConfiguracionView(QWidget):
             ent.setText(value)
         if is_pw:
             ent.setEchoMode(QLineEdit.EchoMode.Password)
+            eye_icon = get_icon("eye", TEXT_MUTED, size=16)
+            action = ent.addAction(eye_icon, QLineEdit.ActionPosition.TrailingPosition)
+            action.setData(ent)
+
+            def _toggle_field_visibility():
+                if ent.echoMode() == QLineEdit.EchoMode.Password:
+                    ent.setEchoMode(QLineEdit.EchoMode.Normal)
+                    action.setIcon(get_icon("eye", ACCENT_GREEN, size=16))
+                else:
+                    ent.setEchoMode(QLineEdit.EchoMode.Password)
+                    action.setIcon(get_icon("eye", TEXT_MUTED, size=16))
+
+            action.triggered.connect(_toggle_field_visibility)
         if disabled:
             ent.setDisabled(True)
 
@@ -1629,8 +1816,15 @@ class ConfiguracionView(QWidget):
                         json.dump(profiles, f)
 
                 self.nombre_val = nombre
+                if self.uploaded_image_b64:
+                    self.photo_data = self.uploaded_image_b64
                 self.original_nombre = nombre
                 self.original_photo_data = self.photo_data
+                self.uploaded_image_b64 = None
+
+                # Actualizar inmediatamente la imagen del avatar con las iniciales o foto nueva
+                self._load_avatar_preview()
+
                 self.shell.refresh_user()
                 self.shell.controller.login_view.load_local_profiles()
                 
@@ -1639,61 +1833,6 @@ class ConfiguracionView(QWidget):
             except Exception as e:
                 dialog = ZenitInfoDialog(self, "Error", f"No se pudieron guardar los cambios: {e}")
                 dialog.exec()
-
-    def _revertir_cambios(self):
-        try:
-            from core.audio_manager import AudioManager
-            AudioManager.instance().play_click()
-        except Exception:
-            pass
-        if self.shell.controller.current_user_id == "invitado":
-            dialog = ZenitInfoDialog(self, "Acceso de Invitado", "Como invitado no tienes cambios que revertir.")
-            dialog.exec()
-            return
-
-        uid = self.shell.controller.current_user_id
-        original_name = getattr(self, "original_nombre", None)
-        original_photo = getattr(self, "original_photo_data", None)
-
-        if not original_name and uid and uid != "demo_tesis":
-            try:
-                data = self.shell.controller.fb_db.read_record(f"users/{uid}")
-                if data:
-                    original_name = data.get("nombre")
-                    original_photo = data.get("imagen_data")
-                    self.photo_url = data.get("imagen_url")
-            except Exception:
-                pass
-
-        if not original_name and os.path.exists("local_profiles.json"):
-            try:
-                with open("local_profiles.json", "r") as f:
-                    profiles = json.load(f)
-                    if uid in profiles:
-                        original_name = profiles[uid].get("nombre")
-                        original_photo = profiles[uid].get("imagen_data")
-            except Exception:
-                pass
-
-        if not original_name:
-            original_name = "Usuario"
-
-        self.nombre_val = original_name
-        self.photo_data = original_photo
-        self.uploaded_image_b64 = None
-
-        # Restaurar inmediatamente el texto en el QLineEdit
-        if hasattr(self, 'ent_nombre') and self.ent_nombre:
-            self.ent_nombre.setText(self.nombre_val)
-        elif hasattr(self, 'frame_nombre') and self.frame_nombre:
-            ent = self.frame_nombre.findChild(QLineEdit)
-            if ent:
-                ent.setText(self.nombre_val)
-
-        self._load_avatar_preview()
-
-        dialog = ZenitInfoDialog(self, "Cambios Descartados", "Se han restablecido los valores originales de tu perfil.")
-        dialog.exec()
 
     def refresh_data(self):
         """Sincroniza y recarga los valores cuando el usuario abre la vista de configuración."""
@@ -1719,7 +1858,80 @@ class ConfiguracionView(QWidget):
 
         if hasattr(self, 'ent_nombre') and self.ent_nombre:
             self.ent_nombre.setText(self.nombre_val)
+        if hasattr(self, 'chk_remember'):
+            self.chk_remember.blockSignals(True)
+            self.chk_remember.setChecked(self._load_remember_preference())
+            self.chk_remember.blockSignals(False)
+        if hasattr(self, 'chk_music'):
+            try:
+                from core.audio_manager import AudioManager
+                self.chk_music.blockSignals(True)
+                self.chk_music.setChecked(AudioManager.instance().music_enabled)
+                self.chk_music.blockSignals(False)
+            except Exception:
+                pass
         self._load_avatar_preview()
+
+    def _load_remember_preference(self):
+        """Lee la preferencia 'remember' del perfil local actual."""
+        uid = self.shell.controller.current_user_id
+        if not uid or uid == "invitado":
+            return False
+        if os.path.exists("local_profiles.json"):
+            try:
+                with open("local_profiles.json", "r") as f:
+                    profiles = json.load(f)
+                return bool(profiles.get(uid, {}).get("remember", False))
+            except Exception:
+                pass
+        return False
+
+    def _guardar_preferencia_sesion(self, checked):
+        """Persiste Mantener sesión abierta en local_profiles.json."""
+        try:
+            from core.audio_manager import AudioManager
+            AudioManager.instance().play_click()
+        except Exception:
+            pass
+
+        uid = self.shell.controller.current_user_id
+        if not uid or uid == "invitado":
+            return
+
+        profiles = {}
+        if os.path.exists("local_profiles.json"):
+            try:
+                with open("local_profiles.json", "r") as f:
+                    profiles = json.load(f)
+            except Exception:
+                profiles = {}
+
+        if uid not in profiles:
+            profiles[uid] = {"nombre": self.nombre_val}
+
+        profiles[uid]["remember"] = bool(checked)
+        try:
+            with open("local_profiles.json", "w") as f:
+                json.dump(profiles, f)
+            if hasattr(self.shell.controller, "login_view"):
+                self.shell.controller.login_view.load_local_profiles()
+        except Exception as e:
+            dialog = ZenitInfoDialog(self, "Error", f"No se pudo guardar la preferencia de sesión: {e}")
+            dialog.exec()
+
+    def _guardar_preferencia_musica(self, checked):
+        """Activa o desactiva la música de fondo/ejercicio y persiste la preferencia."""
+        try:
+            from core.audio_manager import AudioManager
+            audio = AudioManager.instance()
+            audio.play_click()
+            audio.set_music_enabled(bool(checked), persist=True)
+            # Si se reactiva, reanudar el modo actual (fondo por defecto fuera de ejercicio)
+            if checked and audio._current_mode != audio.MODE_EJERCICIO:
+                audio.start_background_music()
+        except Exception as e:
+            dialog = ZenitInfoDialog(self, "Error", f"No se pudo actualizar la música: {e}")
+            dialog.exec()
 
     def _abrir_modal_contrasena(self):
         """Abre el modal de configuración y restablecimiento de contraseña."""

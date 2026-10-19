@@ -495,13 +495,13 @@ class ActiveExerciseView(QWidget):
         """)
         top_layout.addWidget(self.live_badge, alignment=Qt.AlignmentFlag.AlignRight)
 
-        # Botón para silenciar / activar efectos de sonido
+        # Botón para silenciar / activar música y efectos
         self.btn_sound = QPushButton()
         self.btn_sound.setFixedSize(32, 32)
         self.btn_sound.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_sound.setIcon(get_icon("volume", ACCENT_GREEN, size=16))
         self.btn_sound.setIconSize(QSize(16, 16))
-        self.btn_sound.setToolTip("Silenciar / Activar Efectos de Sonido")
+        self.btn_sound.setToolTip("Silenciar / Activar música y efectos")
         self.btn_sound.setStyleSheet(f"""
             QPushButton {{
                 background-color: {BG_CARD};
@@ -767,6 +767,12 @@ class ActiveExerciseView(QWidget):
         )
         start_modal.exec()
 
+        # Cambiar a música motivacional de ejercicio (aleatoria y continua)
+        try:
+            self.audio.start_exercise_music()
+        except Exception as e:
+            print(f"[ActiveExerciseView] Error iniciando música de ejercicio: {e}")
+
         self._switch_exercise(first_ex["ex_type"], target_reps=first_ex["target_reps"])
 
         # Detener hilo previo si existe
@@ -946,6 +952,7 @@ class ActiveExerciseView(QWidget):
         self._exit_view()
 
     def _toggle_pause(self):
+        # Efecto del botón primero; la música se pausa justo después
         self.audio.play_click()
         if not self.camera_thread:
             return
@@ -954,11 +961,19 @@ class ActiveExerciseView(QWidget):
             self.btn_pause.setText("Pausar Entrenamiento")
             self.live_badge.setText(" ● CÁMARA EN VIVO HD")
             self.live_badge.setStyleSheet(f"color: {ACCENT_GREEN}; background-color: {ACCENT_GREEN_BG}; border: 1px solid {ACCENT_GREEN}; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold;")
+            try:
+                self.audio.resume_music_for_exercise()
+            except Exception as e:
+                print(f"[ActiveExerciseView] Error reanudando música: {e}")
         else:
             self.camera_thread.pause()
             self.btn_pause.setText("Reanudar Entrenamiento")
             self.live_badge.setText(" ❚❚ PAUSADO")
             self.live_badge.setStyleSheet(f"color: #F59E0B; background-color: #1F170A; border: 1px solid #F59E0B; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold;")
+            try:
+                self.audio.pause_music_for_exercise()
+            except Exception as e:
+                print(f"[ActiveExerciseView] Error pausando música: {e}")
 
     def _confirm_exit(self):
         self.audio.play_click()
@@ -1015,14 +1030,21 @@ class ActiveExerciseView(QWidget):
             if self.camera_thread.isRunning():
                 self.camera_thread.stop()
             self.camera_thread = None
+
+        # Restaurar icono de volumen y música ambiental al salir
+        try:
+            self.btn_sound.setIcon(get_icon("volume", ACCENT_GREEN, size=16))
+            self.audio.start_background_music()
+        except Exception as e:
+            print(f"[ActiveExerciseView] Error restaurando música de fondo: {e}")
         
         # Volver a la vista de ejercicios
         if hasattr(self.shell, 'navigate'):
             self.shell.navigate("ejercicios")
 
     def _toggle_sound(self):
-        """Silencia o reactiva los efectos de sonido."""
-        is_muted = self.audio.toggle_sfx_mute()
+        """Silencia o reactiva música + efectos durante el entrenamiento."""
+        is_muted = self.audio.toggle_session_audio_mute()
         icon_name = "volume-x" if is_muted else "volume"
         icon_color = TEXT_MUTED if is_muted else ACCENT_GREEN
         self.btn_sound.setIcon(get_icon(icon_name, icon_color, size=16))
