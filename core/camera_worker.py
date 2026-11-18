@@ -29,7 +29,7 @@ class CameraThread(QThread):
     stats_updated = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, camera_index=0, exercise_type="squat", target_reps=0):
+    def __init__(self, camera_index=0, exercise_type="knee_raise", target_reps=0):
         super().__init__()
         self.camera_index = camera_index
         self.exercise_type = exercise_type

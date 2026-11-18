@@ -32,9 +32,9 @@ RETOS_DATA = [
         "tiempo": "10 minutos",
         "tiempo_lbl": "tiempo total",
         "ejercicios": [
+            ("Levantamiento de Rodillas", "20 reps", "knee_raise"),
             ("Sentadillas", "15 reps", "squat"),
-            ("Lagartijas", "10 reps", "pushup"),
-            ("Jumping Jacks", "20 reps", "jumping_jacks")
+            ("Lagartijas", "10 reps", "pushup")
         ],
         "btn_text": "Comenzar reto",
         "color_bg": EASY_BG,
@@ -50,9 +50,9 @@ RETOS_DATA = [
         "tiempo": "20 minutos",
         "tiempo_lbl": "tiempo total",
         "ejercicios": [
+            ("Levantamiento de Rodillas", "40 reps", "knee_raise"),
             ("Sentadillas", "30 reps", "squat"),
-            ("Lagartijas", "20 reps", "pushup"),
-            ("Jumping Jacks", "40 reps", "jumping_jacks")
+            ("Lagartijas", "20 reps", "pushup")
         ],
         "btn_text": "Comenzar reto",
         "color_bg": NORM_BG,
@@ -68,9 +68,9 @@ RETOS_DATA = [
         "tiempo": "35 minutos",
         "tiempo_lbl": "tiempo total",
         "ejercicios": [
+            ("Levantamiento de Rodillas", "60 reps", "knee_raise"),
             ("Sentadillas", "60 reps", "squat"),
-            ("Lagartijas", "40 reps", "pushup"),
-            ("Jumping Jacks", "80 reps", "jumping_jacks")
+            ("Lagartijas", "40 reps", "pushup")
         ],
         "btn_text": "Comenzar reto",
         "color_bg": HARD_BG,
@@ -86,9 +86,9 @@ RETOS_DATA = [
         "tiempo": "Sin límite",
         "tiempo_lbl": "a tu ritmo",
         "ejercicios": [
+            ("Levantamiento de Rodillas", "Libre", "knee_raise"),
             ("Sentadillas", "Libre", "squat"),
-            ("Lagartijas", "Libre", "pushup"),
-            ("Jumping Jacks", "Libre", "jumping_jacks")
+            ("Lagartijas", "Libre", "pushup")
         ],
         "btn_text": "Comenzar sesión",
         "color_bg": FREE_BG,

@@ -5,7 +5,7 @@ class ExerciseCounter:
     """
     Evaluador y contador de repeticiones multi-ángulo (de frente, de lado y en diagonal).
     """
-    def __init__(self, exercise_type="squat", target_reps=0):
+    def __init__(self, exercise_type="knee_raise", target_reps=0):
         self.exercise_type = exercise_type
         self.counter = 0
         self.target_reps = target_reps
@@ -14,13 +14,17 @@ class ExerciseCounter:
         self.feedback_type = "info"  # "good", "warning", "info"
         self.progress = 0  # 0 a 100%
         self.start_time = time.time()
-        self.last_rep_time = time.time()
+        self.last_rep_time = 0.0
         self.session_accumulated_calories = 0.0
         self.session_accumulated_reps = 0
+        self.active_side = None
+        self.last_counted_leg = None
         self.calories_per_rep = {
             "squat": 0.32,
             "pushup": 0.45,
-            "jumping_jacks": 0.20
+            "knee_raise": 0.22,
+            "rodillas": 0.22,
+            "jumping_jacks": 0.22
         }
 
     def set_exercise(self, exercise_type, target_reps=0, preserve_session_totals=False):
@@ -33,6 +37,9 @@ class ExerciseCounter:
         self.target_reps = target_reps
         self.counter = 0
         self.stage = None
+        self.active_side = None
+        self.last_counted_leg = None
+        self.last_rep_time = 0.0
         self.feedback = f"Iniciando {exercise_type}"
         self.feedback_type = "info"
         self.progress = 0
@@ -70,8 +77,8 @@ class ExerciseCounter:
             self._evaluate_squat(detector, img)
         elif self.exercise_type == "pushup":
             self._evaluate_pushup(detector, img)
-        elif self.exercise_type == "jumping_jacks":
-            self._evaluate_jumping_jacks(detector, img)
+        elif self.exercise_type in ["knee_raise", "rodillas", "jumping_jacks"]:
+            self._evaluate_knee_raise(detector, img)
         else:
             self._evaluate_squat(detector, img)
 
@@ -208,61 +215,154 @@ class ExerciseCounter:
             self.feedback = "Baja el pecho mas cerca del suelo"
             self.feedback_type = "warning"
 
-    def _evaluate_jumping_jacks(self, detector, img):
+    def _evaluate_knee_raise(self, detector, img):
         """
-        Jumping Jacks: Evalúa apertura de brazos y piernas en 2D con medidores gráficos.
+        Levantamiento de rodillas (High Knees / Marcha de rodillas altas):
+        Evalúa la flexión de cadera y elevación de cada rodilla hacia el pecho.
+        - Exige alternancia estricta de piernas (no permite repetir la misma pierna consecutivamente).
+        - Diseñado para responder a alta velocidad (trote o marcha rápida) sin exigir pausas.
+        - Inmune a falsos conteos mientras la rodilla se mantenga en el aire.
         """
         lm = detector.lm_list
 
-        vis_left = (lm[23][3] + lm[11][3] + lm[15][3]) / 3.0
-        vis_right = (lm[24][3] + lm[12][3] + lm[16][3]) / 3.0
+        # 1. Protección de proximidad excesiva
+        hip_y = (lm[23][5] + lm[24][5]) / 2.0
+        knee_y = (lm[25][5] + lm[26][5]) / 2.0
+        if hip_y > 0.82 or knee_y > 0.94:
+            self.feedback = "Alejate a 1.8m - 2.5m para encuadrar las piernas"
+            self.feedback_type = "warning"
+            return
 
-        if vis_left >= vis_right:
-            arm_angle = detector.find_angle(img, 23, 11, 15, draw=True)
-            _ = detector.find_angle(img, 24, 12, 16, draw=False)
+        # 2. Altura de referencia del torso
+        shoulder_y = (lm[11][5] + lm[12][5]) / 2.0
+        torso_h = max(abs(hip_y - shoulder_y), 0.15)
+
+        hip_l_y, hip_r_y = lm[23][5], lm[24][5]
+        knee_l_y, knee_r_y = lm[25][5], lm[26][5]
+
+        # Distancia relativa vertical rodilla-cadera normalizada por altura de torso
+        rel_knee_l = (knee_l_y - hip_l_y) / torso_h
+        rel_knee_r = (knee_r_y - hip_r_y) / torso_h
+
+        # Ángulos 3D de flexión de cadera (Hombro - Cadera - Rodilla)
+        angle_l_3d = detector.find_angle_3d(img, 11, 23, 25, draw=False)
+        angle_r_3d = detector.find_angle_3d(img, 12, 24, 26, draw=False)
+
+        # 3. Determinar cuál pierna está más elevada para el medidor visual
+        if rel_knee_l < rel_knee_r:
+            active_leg = "left"
+            active_rel = rel_knee_l
+            active_angle = angle_l_3d
+            _ = detector.find_angle_3d(img, 11, 23, 25, draw=True)
         else:
-            arm_angle = detector.find_angle(img, 24, 12, 16, draw=True)
-            _ = detector.find_angle(img, 23, 11, 15, draw=False)
+            active_leg = "right"
+            active_rel = rel_knee_r
+            active_angle = angle_r_3d
+            _ = detector.find_angle_3d(img, 12, 24, 26, draw=True)
 
-        wrist_l_y = lm[15][5]
-        wrist_r_y = lm[16][5]
-        shoulder_l_y = lm[11][5]
-        shoulder_r_y = lm[12][5]
+        if active_angle <= 0:
+            self.feedback = "Buscando articulaciones de piernas..."
+            self.feedback_type = "info"
+            return
 
-        arms_raised = (wrist_l_y < shoulder_l_y) or (wrist_r_y < shoulder_r_y) or (arm_angle > 110)
-        arms_lowered = (wrist_l_y > (shoulder_l_y + 0.05)) and (wrist_r_y > (shoulder_r_y + 0.05)) or (arm_angle < 50)
+        # 4. Progreso continuo visual (0% a 100%)
+        prog_angle = np.interp(active_angle, [95, 160], [100, 0])
+        prog_rel = np.interp(active_rel, [0.20, 0.70], [100, 0])
+        self.progress = int(max(0, min(100, max(prog_angle, prog_rel))))
 
-        ankle_l_x = lm[27][4]
-        ankle_r_x = lm[28][4]
-        shoulder_l_x = lm[11][4]
-        shoulder_r_x = lm[12][4]
+        # 5. Criterios biomecánicos de activación y retorno:
+        # Criterio rodilla elevada (sensible a velocidad rápida)
+        is_left_high = (rel_knee_l < 0.38) or (angle_l_3d < 118 and rel_knee_l < 0.50)
+        is_right_high = (rel_knee_r < 0.38) or (angle_r_3d < 118 and rel_knee_r < 0.50)
 
-        ankle_dist = abs(ankle_l_x - ankle_r_x)
-        shoulder_dist = max(abs(shoulder_l_x - shoulder_r_x), 0.05)
-        leg_ratio = ankle_dist / shoulder_dist
+        # Criterio pierna que desciende hacia el suelo
+        is_left_down = (rel_knee_l > 0.52) or (angle_l_3d > 135)
+        is_right_down = (rel_knee_r > 0.52) or (angle_r_3d > 135)
 
-        self.progress = int(np.interp(arm_angle, [30, 140], [0, 100]))
-
-        is_jack_open = arms_raised or (arm_angle > 115 and leg_ratio > 1.25)
-        is_jack_closed = arms_lowered and (leg_ratio < 1.25)
-
+        # Inicialización de estado
         if self.stage is None:
-            self.stage = "down" if is_jack_closed else "up"
+            self.stage = "down"
+            self.active_side = None
 
-        if is_jack_closed:
-            if self.stage == "up":
-                self.counter += 1
-                self.last_rep_time = time.time()
-                self.feedback = f"¡Excelente Jack #{self.counter}!"
-                self.feedback_type = "good"
-                self.stage = "down"
+        # 6. Máquina de estados FSM con alternancia estricta:
+        if self.stage == "down":
+            if is_left_high and not is_right_high:
+                # Verificar alternancia: no permitir repetir pierna izquierda consecutiva
+                if self.last_counted_leg == "left":
+                    self.feedback = "Alterna de pierna: ahora eleva la rodilla derecha"
+                    self.feedback_type = "warning"
+                else:
+                    self.stage = "up"
+                    self.active_side = "left"
+                    self.feedback = "¡Bien! Baja la pierna al suelo"
+                    self.feedback_type = "good"
+
+            elif is_right_high and not is_left_high:
+                # Verificar alternancia: no permitir repetir pierna derecha consecutiva
+                if self.last_counted_leg == "right":
+                    self.feedback = "Alterna de pierna: ahora eleva la rodilla izquierda"
+                    self.feedback_type = "warning"
+                else:
+                    self.stage = "up"
+                    self.active_side = "right"
+                    self.feedback = "¡Bien! Baja la pierna al suelo"
+                    self.feedback_type = "good"
+
+            elif 0.38 <= active_rel <= 0.60:
+                self.feedback = "Eleva la rodilla un poco mas alto"
+                self.feedback_type = "warning"
             else:
-                self.feedback = "Salta y abre brazos y piernas"
+                if self.last_counted_leg == "left":
+                    self.feedback = "Eleva la rodilla DERECHA"
+                elif self.last_counted_leg == "right":
+                    self.feedback = "Eleva la rodilla IZQUIERDA"
+                else:
+                    self.feedback = "Eleva una rodilla hacia la cadera"
                 self.feedback_type = "info"
-                self.stage = "down"
 
-        elif is_jack_open:
-            if self.stage == "down":
-                self.stage = "up"
-                self.feedback = "¡Bien! Vuelve a la posición inicial"
-                self.feedback_type = "good"
+        elif self.stage == "up":
+            # PROTECCIÓN: Si la rodilla se mantiene arriba, el estado permanece en "up"
+            # y NINGUNA repetición puede sumarse hasta que la pierna descienda.
+            if self.active_side == "left":
+                if is_left_down:
+                    self.counter += 1
+                    self.last_counted_leg = "left"
+                    self.last_rep_time = time.time()
+                    self.stage = "down"
+                    self.active_side = None
+
+                    # Enlace continuo veloz: si la pierna derecha ya viene subiendo, encadenar de inmediato
+                    if is_right_high and not is_left_high:
+                        self.stage = "up"
+                        self.active_side = "right"
+                        self.feedback = f"¡Excelente #{self.counter}! ¡Sigue el ritmo!"
+                    else:
+                        self.feedback = f"¡Excelente #{self.counter}! Ahora la derecha"
+                    self.feedback_type = "good"
+                else:
+                    self.feedback = "¡Bien! Ahora baja la pierna"
+                    self.feedback_type = "good"
+
+            elif self.active_side == "right":
+                if is_right_down:
+                    self.counter += 1
+                    self.last_counted_leg = "right"
+                    self.last_rep_time = time.time()
+                    self.stage = "down"
+                    self.active_side = None
+
+                    # Enlace continuo veloz: si la pierna izquierda ya viene subiendo, encadenar de inmediato
+                    if is_left_high and not is_right_high:
+                        self.stage = "up"
+                        self.active_side = "left"
+                        self.feedback = f"¡Excelente #{self.counter}! ¡Sigue el ritmo!"
+                    else:
+                        self.feedback = f"¡Excelente #{self.counter}! Ahora la izquierda"
+                    self.feedback_type = "good"
+                else:
+                    self.feedback = "¡Bien! Ahora baja la pierna"
+                    self.feedback_type = "good"
+
+            else:
+                if is_left_down and is_right_down:
+                    self.stage = "down"

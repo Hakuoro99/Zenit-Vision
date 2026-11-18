@@ -235,20 +235,24 @@ def get_icon_pixmap(name, color_hex, size=24):
         path.lineTo(20, 18)
         painter.drawPath(path)
         
-    elif name == "jumping_jacks" or name == "jack":
-        # Silueta jumping jacks
+    elif name in ["knee_raise", "rodillas", "knees", "jumping_jacks", "jack"]:
+        # Silueta levantamiento de rodillas (High Knees)
         painter.drawEllipse(10, 3, 4, 4)
         path = QPainterPath()
         path.moveTo(12, 7)
-        path.lineTo(12, 13)
+        path.lineTo(12, 14)
+        # Brazos en movimiento de marcha
         path.moveTo(12, 9)
-        path.lineTo(5, 5)
+        path.lineTo(7, 12)
         path.moveTo(12, 9)
-        path.lineTo(19, 5)
-        path.moveTo(12, 13)
-        path.lineTo(6, 21)
-        path.moveTo(12, 13)
-        path.lineTo(18, 21)
+        path.lineTo(16, 8)
+        # Pierna base apoyada
+        path.moveTo(12, 14)
+        path.lineTo(12, 21)
+        # Pierna con rodilla elevada a 90°
+        path.moveTo(12, 14)
+        path.lineTo(17, 14)
+        path.lineTo(17, 19)
         painter.drawPath(path)
 
     elif name == "eye":

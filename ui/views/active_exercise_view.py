@@ -28,10 +28,15 @@ EXERCISE_INFO = {
         "descripcion": "1. Colócate en posición de tabla con las manos alineadas a los hombros y el cuerpo recto.\n2. Flexiona los codos bajando el pecho de forma controlada hasta estar cerca del suelo.\n3. Empuja firmemente con ambos brazos hasta extender completamente los codos.",
         "distancia": "1.5m - 2.0m de la cámara (cuerpo entero visible en posición horizontal o diagonal)"
     },
+    "knee_raise": {
+        "nombre": "Levantamiento de Rodillas",
+        "descripcion": "1. Mantén una postura erguida con los pies al ancho de las caderas y el abdomen firme.\n2. Eleva una rodilla hacia el pecho hasta la altura de la cadera (muslo paralelo al suelo).\n3. Baja el pie de forma controlada y alterna de inmediato elevando la otra pierna.",
+        "distancia": "1.8m - 2.5m de la cámara (cuerpo completo visible de frente)"
+    },
     "jumping_jacks": {
-        "nombre": "Jumping Jacks (Saltos)",
-        "descripcion": "1. Inicia erguido con los pies juntos y los brazos pegados a los costados del cuerpo.\n2. Salta abriendo las piernas y elevando simultáneamente ambos brazos por encima de la cabeza.\n3. Salta nuevamente para regresar a la postura inicial con pies juntos y brazos abajo.",
-        "distancia": "1.8m - 2.5m de la cámara (brazos extendidos arriba y piernas completas visibles)"
+        "nombre": "Levantamiento de Rodillas",
+        "descripcion": "1. Mantén una postura erguida con los pies al ancho de las caderas y el abdomen firme.\n2. Eleva una rodilla hacia el pecho hasta la altura de la cadera (muslo paralelo al suelo).\n3. Baja el pie de forma controlada y alterna de inmediato elevando la otra pierna.",
+        "distancia": "1.8m - 2.5m de la cámara (cuerpo completo visible de frente)"
     }
 }
 
@@ -208,7 +213,7 @@ class ExerciseStartModal(QDialog):
         sub_lbl.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none;")
         card_layout.addWidget(sub_lbl)
 
-        info = EXERCISE_INFO.get(self.ex_type, EXERCISE_INFO["squat"])
+        info = EXERCISE_INFO.get(self.ex_type, EXERCISE_INFO["knee_raise"])
         ex_name = info["nombre"]
         meta_str = f"{self.target_reps} repeticiones" if self.target_reps > 0 else "Estilo Libre"
 
@@ -358,7 +363,7 @@ class ExerciseTransitionModal(QDialog):
         card_layout.addWidget(rest_card)
 
         # Información e Instrucciones del Siguiente Ejercicio
-        info = EXERCISE_INFO.get(self.next_ex_type, EXERCISE_INFO["squat"])
+        info = EXERCISE_INFO.get(self.next_ex_type, EXERCISE_INFO["knee_raise"])
         next_name = info["nombre"]
         meta_str = f"{self.next_target_reps} repeticiones" if self.next_target_reps > 0 else "Estilo Libre"
 
@@ -638,11 +643,11 @@ class ActiveExerciseView(QWidget):
         ex_btns_layout = QHBoxLayout()
         ex_btns_layout.setSpacing(6)
 
+        self.btn_ex_knees = QPushButton("Rodillas")
         self.btn_ex_squat = QPushButton("Sentadillas")
         self.btn_ex_pushup = QPushButton("Lagartijas")
-        self.btn_ex_jacks = QPushButton("Jacks")
 
-        for b in [self.btn_ex_squat, self.btn_ex_pushup, self.btn_ex_jacks]:
+        for b in [self.btn_ex_knees, self.btn_ex_squat, self.btn_ex_pushup]:
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.setFixedHeight(28)
             b.setStyleSheet(f"""
@@ -660,13 +665,13 @@ class ActiveExerciseView(QWidget):
                 }}
             """)
 
+        self.btn_ex_knees.clicked.connect(lambda: self._manual_switch_exercise("knee_raise"))
         self.btn_ex_squat.clicked.connect(lambda: self._manual_switch_exercise("squat"))
         self.btn_ex_pushup.clicked.connect(lambda: self._manual_switch_exercise("pushup"))
-        self.btn_ex_jacks.clicked.connect(lambda: self._manual_switch_exercise("jumping_jacks"))
 
+        ex_btns_layout.addWidget(self.btn_ex_knees)
         ex_btns_layout.addWidget(self.btn_ex_squat)
         ex_btns_layout.addWidget(self.btn_ex_pushup)
-        ex_btns_layout.addWidget(self.btn_ex_jacks)
         panel_layout.addLayout(ex_btns_layout)
 
         panel_layout.addStretch()
@@ -730,12 +735,12 @@ class ActiveExerciseView(QWidget):
         self.title_lbl.setText(f"Entrenamiento: {self.current_challenge['nombre']}")
 
         # Parsear secuencia de ejercicios en la rutina
-        raw_exercises = self.current_challenge.get("ejercicios", [("Sentadillas", "Libre", "squat")])
+        raw_exercises = self.current_challenge.get("ejercicios", [("Levantamiento de Rodillas", "Libre", "knee_raise")])
         self.session_exercises = []
         for item in raw_exercises:
             name = item[0]
             reps_str = item[1]
-            ex_type = item[2] if len(item) > 2 else "squat"
+            ex_type = item[2] if len(item) > 2 else "knee_raise"
             target_reps = 0
             if "reps" in reps_str.lower():
                 try:
@@ -807,7 +812,9 @@ class ActiveExerciseView(QWidget):
         btn_map = {
             "squat": self.btn_ex_squat,
             "pushup": self.btn_ex_pushup,
-            "jumping_jacks": self.btn_ex_jacks
+            "knee_raise": self.btn_ex_knees,
+            "rodillas": self.btn_ex_knees,
+            "jumping_jacks": self.btn_ex_knees
         }
 
         for key, btn in btn_map.items():
