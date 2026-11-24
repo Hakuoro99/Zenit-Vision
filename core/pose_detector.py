@@ -68,8 +68,10 @@ class PoseDetector:
                         x2, y2 = int(lm2.x * w), int(lm2.y * h)
                         cv2.line(img, (x1, y1), (x2, y2), (255, 255, 255), 2, cv2.LINE_AA)
             
-            # Dibujar puntos de articulación
+            # Dibujar puntos de articulación (solo cuerpo: IDs 11+ — excluir cabeza 0-10)
             for idx, lm in enumerate(pose_lms):
+                if idx < 11:
+                    continue  # Omitir nariz, ojos, orejas y boca
                 if getattr(lm, 'visibility', 1.0) > 0.3:
                     cx, cy = int(lm.x * w), int(lm.y * h)
                     cv2.circle(img, (cx, cy), 5, (0, 255, 200), cv2.FILLED, cv2.LINE_AA)

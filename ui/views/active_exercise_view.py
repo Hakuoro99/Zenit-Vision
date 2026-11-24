@@ -18,25 +18,25 @@ from core.audio_manager import AudioManager
 
 # ── Catálogo de Información e Instrucciones de Ejercicios ────────────────────
 EXERCISE_INFO = {
+    "knee_raise": {
+        "nombre": "Levantamiento de Rodillas",
+        "descripcion": "• Párate derecho mirando al frente.\n• Eleva una rodilla a la altura de la cadera.\n• Baja el pie y alterna con la otra pierna.",
+        "distancia": "1.8m – 2.5m (cuerpo completo visible)"
+    },
     "squat": {
         "nombre": "Sentadillas",
-        "descripcion": "1. Colócate de pie con los pies a la anchura de los hombros y la espalda recta.\n2. Flexiona tus rodillas bajando la cadera como si fueras a sentarte en una silla (hasta ~90°).\n3. Empuja con los talones manteniendo el pecho erguido para subir a la posición inicial.",
-        "distancia": "1.5m - 2.5m de la cámara (cuerpo completo visible de frente o perfil)"
+        "descripcion": "• Pies al ancho de hombros y espalda erguida.\n• Flexiona rodillas bajando a 90°.\n• Empuja con talones para volver a subir.",
+        "distancia": "1.5m – 2.5m (cuerpo completo visible)"
     },
     "pushup": {
         "nombre": "Lagartijas (Flexiones)",
-        "descripcion": "1. Colócate en posición de tabla con las manos alineadas a los hombros y el cuerpo recto.\n2. Flexiona los codos bajando el pecho de forma controlada hasta estar cerca del suelo.\n3. Empuja firmemente con ambos brazos hasta extender completamente los codos.",
-        "distancia": "1.5m - 2.0m de la cámara (cuerpo entero visible en posición horizontal o diagonal)"
-    },
-    "knee_raise": {
-        "nombre": "Levantamiento de Rodillas",
-        "descripcion": "1. Mantén una postura erguida con los pies al ancho de las caderas y el abdomen firme.\n2. Eleva una rodilla hacia el pecho hasta la altura de la cadera (muslo paralelo al suelo).\n3. Baja el pie de forma controlada y alterna de inmediato elevando la otra pierna.",
-        "distancia": "1.8m - 2.5m de la cámara (cuerpo completo visible de frente)"
+        "descripcion": "• Posición de tabla con el cuerpo recto.\n• Flexiona codos bajando el pecho al suelo.\n• Empuja con fuerza para volver arriba.",
+        "distancia": "1.5m – 2.0m (cuerpo completo visible)"
     },
     "jumping_jacks": {
         "nombre": "Levantamiento de Rodillas",
-        "descripcion": "1. Mantén una postura erguida con los pies al ancho de las caderas y el abdomen firme.\n2. Eleva una rodilla hacia el pecho hasta la altura de la cadera (muslo paralelo al suelo).\n3. Baja el pie de forma controlada y alterna de inmediato elevando la otra pierna.",
-        "distancia": "1.8m - 2.5m de la cámara (cuerpo completo visible de frente)"
+        "descripcion": "• Párate derecho mirando al frente.\n• Eleva una rodilla a la altura de la cadera.\n• Baja el pie y alterna con la otra pierna.",
+        "distancia": "1.8m – 2.5m (cuerpo completo visible)"
     }
 }
 
@@ -130,7 +130,6 @@ class WorkoutSummaryModal(QDialog):
         add_metric("Repeticiones Totales", f"{self.summary.get('repeticiones_totales', 0)} reps ({self.summary.get('rep_points', 0)} pts)", "squat", ACCENT_GREEN)
         add_metric("Precisión Postural", f"{self.summary.get('precision_postural', 0)}% (+{self.summary.get('precision_bonus', 0)} pts)", "stats", "#8B5CF6")
         add_metric("Duración Total", f"{self.summary.get('duracion_minutos', 0)} min", "clock", "#3B82F6")
-        add_metric("Calorías Estimadas", f"{self.summary.get('calorias_estimadas', 0)} kcal", "streak", "#F59E0B")
 
         card_layout.addWidget(metrics_frame)
 
@@ -167,11 +166,11 @@ class WorkoutSummaryModal(QDialog):
 
 
 class ExerciseStartModal(QDialog):
-    """Modal informativo al iniciar la sesión con instrucciones completas (sentadillas, lagartijas, saltos), posicionamiento y descanso."""
+    """Modal informativo al iniciar la sesión con instrucciones claras, directas y optimizadas."""
     def __init__(self, parent, challenge_name, first_ex_type, target_reps):
         super().__init__(parent)
-        self.setWindowTitle("Instrucciones de Entrenamiento")
-        self.setFixedSize(510, 500)
+        self.setWindowTitle("Instrucciones de Sesión")
+        self.setFixedSize(490, 440)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.challenge_name = challenge_name
@@ -192,8 +191,8 @@ class ExerciseStartModal(QDialog):
             }}
         """)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(22, 22, 22, 22)
-        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(22, 20, 22, 20)
+        card_layout.setSpacing(11)
 
         # Header
         header = QHBoxLayout()
@@ -201,7 +200,7 @@ class ExerciseStartModal(QDialog):
         icon_lbl.setPixmap(get_icon_pixmap("camera", ACCENT_GREEN, size=28))
         
         title_lbl = QLabel("¡Instrucciones de Sesión!")
-        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 18px; color: {TEXT_WHITE}; font-weight: bold; border: none;")
+        title_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 18px; color: {TEXT_WHITE}; font-weight: bold; border: none; background: transparent;")
         
         header.addWidget(icon_lbl)
         header.addWidget(title_lbl)
@@ -209,8 +208,8 @@ class ExerciseStartModal(QDialog):
         card_layout.addLayout(header)
 
         # Subtítulo Reto
-        sub_lbl = QLabel(f"Reto seleccionado: {self.challenge_name}")
-        sub_lbl.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none;")
+        sub_lbl = QLabel(f"Reto: {self.challenge_name}")
+        sub_lbl.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11.5px; border: none; background: transparent;")
         card_layout.addWidget(sub_lbl)
 
         info = EXERCISE_INFO.get(self.ex_type, EXERCISE_INFO["knee_raise"])
@@ -221,13 +220,13 @@ class ExerciseStartModal(QDialog):
         ex_card = QFrame()
         ex_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {ACCENT_GREEN}; border-radius: 10px;")
         ex_l = QVBoxLayout(ex_card)
-        ex_l.setContentsMargins(12, 10, 12, 10)
-        ex_l.setSpacing(4)
+        ex_l.setContentsMargins(14, 10, 14, 10)
+        ex_l.setSpacing(2)
 
         tag_lbl = QLabel("1. EJERCICIO INICIAL Y META")
-        tag_lbl.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 10px; font-weight: bold; border: none;")
+        tag_lbl.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
         val_lbl = QLabel(f"{ex_name} — Meta: {meta_str}")
-        val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 15px; font-weight: bold; border: none;")
+        val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 14.5px; font-weight: bold; border: none; background: transparent;")
         ex_l.addWidget(tag_lbl)
         ex_l.addWidget(val_lbl)
         card_layout.addWidget(ex_card)
@@ -236,30 +235,29 @@ class ExerciseStartModal(QDialog):
         inst_card = QFrame()
         inst_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
         inst_l = QVBoxLayout(inst_card)
-        inst_l.setContentsMargins(12, 10, 12, 10)
+        inst_l.setContentsMargins(14, 10, 14, 10)
         inst_l.setSpacing(4)
 
-        inst_tag = QLabel("2. TÉCNICA E INSTRUCCIONES DE EJECUCIÓN")
-        inst_tag.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; font-weight: bold; border: none;")
+        inst_tag = QLabel("2. TÉCNICA DE EJECUCIÓN")
+        inst_tag.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
         inst_text = QLabel(info["descripcion"])
         inst_text.setWordWrap(True)
-        inst_text.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11.5px; border: none;")
+        inst_text.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 12px; border: none; background: transparent;")
         inst_l.addWidget(inst_tag)
         inst_l.addWidget(inst_text)
         card_layout.addWidget(inst_card)
 
-        # Card Distancia Recomendada
+        # Card Distancia Recomendada (Conciso)
         dist_card = QFrame()
         dist_card.setStyleSheet(f"background-color: {BG_CARD}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
         dist_l = QVBoxLayout(dist_card)
-        dist_l.setContentsMargins(12, 10, 12, 10)
-        dist_l.setSpacing(4)
+        dist_l.setContentsMargins(14, 10, 14, 10)
+        dist_l.setSpacing(2)
 
-        dist_tag = QLabel("3. DISTANCIA Y ENCUADRE DE CÁMARA")
-        dist_tag.setStyleSheet(f"color: #F59E0B; font-size: 10px; font-weight: bold; border: none;")
-        dist_text = QLabel(f"📐 {info['distancia']}.\nAsegúrate de que la cámara encuadre todo tu cuerpo claramente para el conteo automático.")
-        dist_text.setWordWrap(True)
-        dist_text.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 11.5px; border: none;")
+        dist_tag = QLabel("3. DISTANCIA DE CÁMARA")
+        dist_tag.setStyleSheet(f"color: #F59E0B; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
+        dist_text = QLabel(f"📐 {info['distancia']}")
+        dist_text.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 12px; border: none; background: transparent;")
         dist_l.addWidget(dist_tag)
         dist_l.addWidget(dist_text)
         card_layout.addWidget(dist_card)
@@ -273,7 +271,7 @@ class ExerciseStartModal(QDialog):
                 background-color: {ACCENT_GREEN};
                 color: {BG_MAIN};
                 font-family: '{FONT_TITLE}';
-                font-size: 12px;
+                font-size: 12.5px;
                 font-weight: bold;
                 border: none;
                 border-radius: 8px;
@@ -379,13 +377,13 @@ class ExerciseTransitionModal(QDialog):
         n_val = QLabel(f"{next_name} — Meta: {meta_str}")
         n_val.setStyleSheet(f"color: {TEXT_WHITE}; font-family: '{FONT_TITLE}'; font-size: 15px; font-weight: bold; border: none;")
         
-        n_inst = QLabel(f"📋 Instrucciones:\n{info['descripcion']}")
+        n_inst = QLabel(f"📋 Técnica:\n{info['descripcion']}")
         n_inst.setWordWrap(True)
-        n_inst.setStyleSheet(f"color: {TEXT_GRAY}; font-size: 11px; border: none;")
+        n_inst.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 11.5px; border: none;")
 
-        n_dist = QLabel(f"📐 Posicionamiento: {info['distancia']}")
+        n_dist = QLabel(f"📐 Distancia: {info['distancia']}")
         n_dist.setWordWrap(True)
-        n_dist.setStyleSheet(f"color: #F59E0B; font-size: 10.5px; font-weight: bold; border: none;")
+        n_dist.setStyleSheet(f"color: #F59E0B; font-size: 11px; font-weight: bold; border: none;")
 
         nc_l.addWidget(n_tag)
         nc_l.addWidget(n_val)
@@ -567,7 +565,8 @@ class ActiveExerciseView(QWidget):
         reps_layout.addLayout(reps_title_row)
 
         self.reps_val_lbl = QLabel("0 / 0")
-        self.reps_val_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 32px; color: {ACCENT_GREEN}; font-weight: bold; border: none; background: transparent;")
+        self.reps_val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.reps_val_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 42px; color: {ACCENT_GREEN}; font-weight: bold; border: none; background: transparent;")
         reps_layout.addWidget(self.reps_val_lbl)
 
         self.reps_progress_bar = QProgressBar()
@@ -587,53 +586,44 @@ class ActiveExerciseView(QWidget):
         reps_layout.addWidget(self.reps_progress_bar)
         panel_layout.addWidget(reps_box)
 
-        # Fila Métricas Secundarias (Tiempo y Calorías)
-        sec_layout = QHBoxLayout()
-        sec_layout.setSpacing(10)
-
-        # Tiempo
+        # Card Métrica Tiempo Transcurrido (Centrado y Grande)
         time_box = QFrame()
         time_box.setStyleSheet(f"background-color: {BG_SIDEBAR}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
         t_layout = QVBoxLayout(time_box)
-        t_layout.setContentsMargins(10, 8, 10, 8)
+        t_layout.setContentsMargins(14, 10, 14, 10)
+        t_layout.setSpacing(2)
+        
         t_title = QLabel("TIEMPO")
-        t_title.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px; font-weight: bold;")
+        t_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t_title.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
+        
         self.time_val_lbl = QLabel("00:00")
-        self.time_val_lbl.setStyleSheet(f"font-size: 16px; color: {TEXT_WHITE}; font-weight: bold;")
+        self.time_val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.time_val_lbl.setStyleSheet(f"font-family: '{FONT_TITLE}'; font-size: 34px; color: {TEXT_WHITE}; font-weight: bold; border: none; background: transparent;")
+        
         t_layout.addWidget(t_title)
         t_layout.addWidget(self.time_val_lbl)
+        panel_layout.addWidget(time_box)
 
-        # Calorías
-        cal_box = QFrame()
-        cal_box.setStyleSheet(f"background-color: {BG_SIDEBAR}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
-        c_layout = QVBoxLayout(cal_box)
-        c_layout.setContentsMargins(10, 8, 10, 8)
-        c_title = QLabel("CALORÍAS")
-        c_title.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px; font-weight: bold;")
-        self.cal_val_lbl = QLabel("0.0 kcal")
-        self.cal_val_lbl.setStyleSheet(f"font-size: 16px; color: #F59E0B; font-weight: bold;")
-        c_layout.addWidget(c_title)
-        c_layout.addWidget(self.cal_val_lbl)
+        # Banner de Retroalimentación Postural e Instrucción en Grande (Legible a Distancia)
+        self.feedback_box = QFrame()
+        self.feedback_box.setMinimumHeight(92)
+        self.feedback_box.setStyleSheet(f"background-color: {BG_SIDEBAR}; border: 2px solid {BORDER_LIGHT}; border-radius: 12px;")
+        f_layout = QVBoxLayout(self.feedback_box)
+        f_layout.setContentsMargins(14, 10, 14, 10)
+        f_layout.setSpacing(4)
 
-        sec_layout.addWidget(time_box)
-        sec_layout.addWidget(cal_box)
-        panel_layout.addLayout(sec_layout)
-
-        # Banner de Retroalimentación Postural y Distancia
-        feedback_box = QFrame()
-        feedback_box.setStyleSheet(f"background-color: {BG_SIDEBAR}; border: 1px solid {BORDER_DARK}; border-radius: 10px;")
-        f_layout = QVBoxLayout(feedback_box)
-        f_layout.setContentsMargins(12, 10, 12, 10)
-
-        f_title = QLabel("POSTURA Y RETROALIMENTACIÓN")
-        f_title.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px; font-weight: bold;")
-        self.feedback_val_lbl = QLabel("Posiciónate a 1.5m - 2.5m de la cámara")
-        self.feedback_val_lbl.setWordWrap(True)
-        self.feedback_val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 12px; font-weight: bold;")
-
+        f_title = QLabel("INSTRUCCIÓN EN TIEMPO REAL")
+        f_title.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9.5px; font-weight: bold; border: none; background: transparent;")
         f_layout.addWidget(f_title)
+
+        self.feedback_val_lbl = QLabel("¡Ponte en posición!")
+        self.feedback_val_lbl.setWordWrap(True)
+        self.feedback_val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.feedback_val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 21px; font-weight: bold; border: none; background: transparent;")
         f_layout.addWidget(self.feedback_val_lbl)
-        panel_layout.addWidget(feedback_box)
+
+        panel_layout.addWidget(self.feedback_box)
 
         # Selector rápido de Ejercicio
         ex_select_lbl = QLabel("SELECCIÓN DE EJERCICIO EN SESIÓN")
@@ -778,6 +768,16 @@ class ActiveExerciseView(QWidget):
         except Exception as e:
             print(f"[ActiveExerciseView] Error iniciando música de ejercicio: {e}")
 
+        # Inicializar métricas visuales
+        if first_ex["target_reps"] > 0:
+            self.reps_val_lbl.setText(f"0 / {first_ex['target_reps']}")
+        else:
+            self.reps_val_lbl.setText("0 reps")
+        self.reps_total_lbl.setText("Total: 0 reps")
+        self.reps_progress_bar.setValue(0)
+        self.time_val_lbl.setText("00:00")
+        self.feedback_val_lbl.setText("¡Prepárate!")
+
         self._switch_exercise(first_ex["ex_type"], target_reps=first_ex["target_reps"])
 
         # Detener hilo previo si existe
@@ -905,15 +905,19 @@ class ActiveExerciseView(QWidget):
         secs = elapsed % 60
         self.time_val_lbl.setText(f"{mins:02d}:{secs:02d}")
         
-        self.cal_val_lbl.setText(f"{stats['calories']} kcal")
-        
-        self.feedback_val_lbl.setText(stats["feedback"])
-        if stats["feedback_type"] == "good":
-            self.feedback_val_lbl.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 12px; font-weight: bold;")
-        elif stats["feedback_type"] == "warning":
-            self.feedback_val_lbl.setStyleSheet(f"color: #F59E0B; font-size: 12px; font-weight: bold;")
+        # Actualizar banner de instrucción grande y visible a distancia
+        fb_text = stats["feedback"]
+        self.feedback_val_lbl.setText(fb_text)
+
+        if fb_type == "good":
+            self.feedback_box.setStyleSheet(f"background-color: rgba(16, 185, 129, 0.15); border: 2px solid {ACCENT_GREEN}; border-radius: 12px;")
+            self.feedback_val_lbl.setStyleSheet(f"color: {ACCENT_GREEN}; font-size: 21px; font-weight: bold; background: transparent; border: none;")
+        elif fb_type == "warning":
+            self.feedback_box.setStyleSheet("background-color: rgba(245, 158, 11, 0.15); border: 2px solid #F59E0B; border-radius: 12px;")
+            self.feedback_val_lbl.setStyleSheet("color: #F59E0B; font-size: 21px; font-weight: bold; background: transparent; border: none;")
         else:
-            self.feedback_val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 12px; font-weight: bold;")
+            self.feedback_box.setStyleSheet(f"background-color: {BG_SIDEBAR}; border: 2px solid {BORDER_LIGHT}; border-radius: 12px;")
+            self.feedback_val_lbl.setStyleSheet(f"color: {TEXT_WHITE}; font-size: 21px; font-weight: bold; background: transparent; border: none;")
 
         # Transición automática de ejercicios al cumplir repeticiones de la sesión (solo fuera de preparación)
         if not stats.get("in_prep", False) and target_reps > 0 and reps >= target_reps and not getattr(self, 'is_transitioning', False) and not getattr(self, '_is_finishing', False):
@@ -1006,9 +1010,10 @@ class ActiveExerciseView(QWidget):
         reps = self.latest_stats.get("total_session_reps", self.latest_stats.get("reps", 0))
         elapsed = self.latest_stats.get("elapsed", 0)
         calories = self.latest_stats.get("calories", 0.0)
+        reps_by_exercise = self.latest_stats.get("reps_by_exercise", {})
 
         summary = SessionAnalyzer.calculate_session_stats(
-            self.current_challenge, reps, elapsed, calories
+            self.current_challenge, reps, elapsed, calories, reps_by_exercise=reps_by_exercise
         )
 
         # Guardar en Firebase o sesión de invitado

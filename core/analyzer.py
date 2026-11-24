@@ -7,7 +7,7 @@ class SessionAnalyzer:
     Integrado con GamificationEngine (50 Niveles, 5 Rangos, Puntos por Ejercicio y Misiones Diarias).
     """
     @staticmethod
-    def calculate_session_stats(exercise_data, total_reps, elapsed_seconds, total_calories):
+    def calculate_session_stats(exercise_data, total_reps, elapsed_seconds, total_calories, reps_by_exercise=None):
         """
         Genera un resumen analítico de la sesión finalizada con desglose de Gamificación.
         """
@@ -28,6 +28,7 @@ class SessionAnalyzer:
             "reto_nombre": exercise_data.get("nombre", "Entrenamiento Libre"),
             "dificultad": difficulty,
             "repeticiones_totales": total_reps,
+            "desglose_ejercicios": reps_by_exercise or {},
             "duracion_segundos": elapsed_seconds,
             "duracion_minutos": minutes,
             "calorias_estimadas": round(total_calories, 1),

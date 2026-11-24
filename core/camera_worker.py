@@ -128,7 +128,7 @@ class CameraThread(QThread):
             # 2. Procesar contador y retroalimentación
             if is_prep:
                 reps = self.counter.counter
-                feedback = "Acomodate a 1.5m - 2.5m de la camara"
+                feedback = "Ubícate al centro"
                 progress = 0
             else:
                 reps, feedback, progress = self.counter.process(self.detector, frame)
@@ -138,7 +138,7 @@ class CameraThread(QThread):
                 self._draw_body_silhouette_overlay(frame)
                 self._draw_prep_countdown_overlay(frame, remaining_prep)
 
-            # 4. Dibujar overlay visual en el frame (HUD)
+            # 4. Dibujar overlay visual en el frame (HUD limpio sin banners de texto)
             self._draw_hud_overlay(frame, reps, t_reps, feedback, self.counter.feedback_type, progress)
 
             # 5. Convertir BGR a QImage para PyQt6
@@ -150,7 +150,7 @@ class CameraThread(QThread):
             # 6. Emitir señales hacia la vista de la UI sólo si sigue en ejecución
             if self.running:
                 self.frame_processed.emit(qt_img)
-                display_feedback = "Preparando posicion..." if is_prep else feedback
+                display_feedback = "¡Prepárate!" if is_prep else feedback
                 self.stats_updated.emit({
                     "reps": reps,
                     "target_reps": t_reps,
@@ -161,6 +161,7 @@ class CameraThread(QThread):
                     "elapsed": self.counter.get_elapsed_time() if not is_prep else 0,
                     "calories": self.counter.get_calories(),
                     "exercise_type": ex_type,
+                    "reps_by_exercise": self.counter.get_reps_by_exercise(),
                     "in_prep": is_prep,
                     "remaining_prep": remaining_prep if is_prep else 0
                 })
@@ -309,51 +310,18 @@ class CameraThread(QThread):
                     cv2.FONT_HERSHEY_SIMPLEX, 2.2, (0, 255, 200), 4, cv2.LINE_AA)
 
     def _draw_hud_overlay(self, frame, reps, target_reps, feedback, feedback_type, progress):
-        """Dibuja elementos gráficos sobre el frame de la cámara."""
+        """Dibuja elementos gráficos sobre el frame de la cámara (sin banners de texto que obstruyan la vista)."""
         h, w, _ = frame.shape
 
-        # Banner superior de retroalimentación
-        banner_bg = (30, 30, 30)
-        if feedback_type == "good":
-            banner_bg = (34, 150, 60)  # Verde
-        elif feedback_type == "warning":
-            banner_bg = (20, 100, 220)  # Naranja/Rojo
-
-        cv2.rectangle(frame, (20, 20), (w - 20, 70), banner_bg, -1)
-        cv2.rectangle(frame, (20, 20), (w - 20, 70), (255, 255, 255), 1)
-        
-        # Limpiar texto para evitar '??' en OpenCV putText
-        safe_feedback = clean_cv2_text(feedback)
-        cv2.putText(frame, safe_feedback, (35, 55),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
-
-        # Guía de distancia sutil en parte superior izquierda
-        dist_lbl = clean_cv2_text("Distancia ideal: 1.5m - 2.5m")
-        cv2.putText(frame, dist_lbl, (30, 95),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
-
-        # Barra lateral de progreso de repetición
-        bar_x = w - 40
-        bar_y1 = 110
+        # Barra lateral derecha de progreso de repetición
+        bar_x = w - 30
+        bar_y1 = 80
         bar_y2 = h - 60
         bar_h = bar_y2 - bar_y1
 
         # Fondo barra
-        cv2.rectangle(frame, (bar_x, bar_y1), (bar_x + 20, bar_y2), (50, 50, 50), -1)
+        cv2.rectangle(frame, (bar_x, bar_y1), (bar_x + 16, bar_y2), (40, 40, 40), -1)
         # Relleno barra
         fill_h = int((progress / 100.0) * bar_h)
-        cv2.rectangle(frame, (bar_x, bar_y2 - fill_h), (bar_x + 20, bar_y2), (0, 255, 200), -1)
-        cv2.rectangle(frame, (bar_x, bar_y1), (bar_x + 20, bar_y2), (255, 255, 255), 1)
-
-        # Marcador de repeticiones en esquina inferior izquierda (ampliado para meta)
-        box_w = 230 if target_reps > 0 else 160
-        cv2.rectangle(frame, (20, h - 90), (20 + box_w, h - 20), (20, 20, 20), -1)
-        cv2.rectangle(frame, (20, h - 90), (20 + box_w, h - 20), (0, 255, 200), 2)
-        
-        rep_label = "REPS / META" if target_reps > 0 else "REPS"
-        cv2.putText(frame, rep_label, (35, h - 65),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1, cv2.LINE_AA)
-        
-        reps_text = f"{reps} / {target_reps}" if target_reps > 0 else str(reps)
-        cv2.putText(frame, reps_text, (35, h - 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 3, cv2.LINE_AA)
+        cv2.rectangle(frame, (bar_x, bar_y2 - fill_h), (bar_x + 16, bar_y2), (0, 255, 200), -1)
+        cv2.rectangle(frame, (bar_x, bar_y1), (bar_x + 16, bar_y2), (200, 200, 200), 1)
